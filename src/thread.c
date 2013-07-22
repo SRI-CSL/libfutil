@@ -117,24 +117,26 @@ thread_getthis(void) {
  * code when it returns from the calling function
 */
 void
-thread_remove(mythread_t *thread);
+thread_remove(mythread_t *t);
 void
-thread_remove(mythread_t *thread) {
+thread_remove(mythread_t *t) {
 
-	assert(thread);
+	assert(t);
 
-	list_remove_l(g_threads, &thread->node);
+	logline(log_DEBUG_, "Thread %s started", t->description);
+
+	list_remove_l(g_threads, &t->node);
 }
 
 void
-thread_destroy(mythread_t *thread);
+thread_destroy(mythread_t *t);
 void
-thread_destroy(mythread_t *thread) {
-	mfreestrdup(thread->description, "thread_description");
+thread_destroy(mythread_t *t) {
+	mfreestrdup(t->description, "thread_description");
 
-	cond_destroy(thread->cond);
-	node_destroy(&thread->node);
-	mfree(thread, "thread", sizeof *t);
+	cond_destroy(t->cond);
+	node_destroy(&t->node);
+	mfree(t, "thread", sizeof *t);
 }
 
 bool
