@@ -17,6 +17,7 @@
 #define LD3(t,a,b,c) {}
 #endif
 
+/* Toggle to 1 to get precise list_lock/unlock details */
 #if 0
 #define LDV(t,a) LD(t,a)
 #else
@@ -177,7 +178,7 @@ list_getnext(hlist_t *l) {
 
 		/* Nothing yet, thus wait for it */
 #ifndef _WIN32
-		set_timeout(&timeout, 5);
+		set_timeout(&timeout, 1);
 
 		/*
 		 * pthread_cond_timedwait() unlocks the mutex temporarily
@@ -212,7 +213,9 @@ list_getnext(hlist_t *l) {
 		break;
 	}
 
-	LD2(LIST_ID " = %p", list_id(l), (void *)node);
+	list_unlock(l);
+
+	LD2("exit " LIST_ID " = %p", list_id(l), (void *)node);
 
 	return (node);
 }
