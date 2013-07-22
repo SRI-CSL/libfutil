@@ -1,0 +1,9 @@
+# Temporary files
+*.o
+*.d
+*.lo
+*.la
+*.slo
+*.swp
+.libs
+
