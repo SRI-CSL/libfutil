@@ -347,6 +347,8 @@ int parse_iso8601_time(const char *t, uint64_t *when);
 int parse_iso8601_interval(const char *interval,
 			   uint64_t *start, uint64_t *end);
 
+int futil_daemonize(const char *pidfile);
+
 bool steg_encode(const char *src, unsigned int srclen,
 		char **dst, unsigned int *dstlen,
 		char **mime, unsigned int *mimelen);
