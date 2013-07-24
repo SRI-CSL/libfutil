@@ -460,7 +460,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 		cb(cbdata,
 		   t->thread_num, st, now - t->starttime,
 		   t->description,
-		   thread_equal(t->thread_id, thread_id),
+		   t->thread_id == thread_id,
 		   ts_names[t->state],
 		   t->served);
 

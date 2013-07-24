@@ -49,11 +49,14 @@ typedef pthread_mutex_t		mutex_t;
 typedef pthread_cond_t		cond_t;
 #define getthisthread		pthread_self
 #ifdef __NR_gettid
-#define getthisthreadid()	syscall(__NR_gettid)
+#define getthisthreadid()	((os_thread_id)syscall(__NR_gettid))
 #else
-#define getthisthreadid()	pthread_self()
+#ifdef _DARWIN
+#define getthisthreadid()	((os_thread_id)syscall(SYS_thread_selfid))
+#else
+#define getthisthreadid()	(((os_thread_id)pthread_self())
 #endif
-#define thread_equal(a,b)	pthread_equal(a,b)
+#endif /* __NR_gettid */
 #define mutex_init(m) {							\
 				pthread_mutexattr_t attr;		\
 				pthread_mutexattr_init(&attr);		\
@@ -97,7 +100,6 @@ typedef HANDLE			mutex_t;
 typedef HANDLE			cond_t;
 #define getthisthread		GetCurrentThread
 #define getthisthreadid		GetCurrentThreadId
-#define thread_equal(a,b)	(a == b)
 #define mutex_init(m)		CreateMutex(NULL, false, NULL)
 #define mutex_destroy(m)	CloseHandle(m)
 #define mutex_lock(m)		WaitForSingleObject(m, INFINITE)
