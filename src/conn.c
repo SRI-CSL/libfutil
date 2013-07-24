@@ -1044,6 +1044,25 @@ connset_poll(connset_t *cs) {
 	return (0);
 }
 
+/* For conn_get_ready() and conn_get_one_ready() */
+void
+connset_set_inactive(connset_t *cs, conn_t *conn);
+void
+connset_set_inactive(connset_t *cs, conn_t *conn) {
+	/* Lock her up */
+	connset_lock(cs);
+
+	/*
+	 * we took conn from the ready list
+	 * add it to inactive
+	 */
+	list_remove_l(&cs->inactive, &conn->node);
+	conn->connset_l = &cs->inactive;
+
+	/* Release her */
+	connset_unlock(cs);
+}
+
 conn_t *
 connset_get_ready(connset_t *cs) {
 	conn_t *conn;
@@ -1052,11 +1071,7 @@ connset_get_ready(connset_t *cs) {
 	conn = (conn_t *)list_getnext(&cs->ready);
 	thread_setstate(thread_state_running);
 	if (conn != NULL) {
-		/*
-		 * conn is not in any list, thus return
-		 * it with connset_handled_ready()
-		 */
-		conn->connset_l = NULL;
+		connset_set_inactive(cs, conn);
 	}
 
 	return (conn);
@@ -1068,11 +1083,7 @@ connset_get_one_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_pop(&cs->ready);
 	if (conn != NULL) {
-		/*
-		 * conn is not in any list, thus return
-		 * it with connset_handled_ready()
-		 */
-		conn->connset_l = NULL;
+		connset_set_inactive(cs, conn);
 	}
 
 	return (conn);
@@ -1085,6 +1096,9 @@ connset_handled_ready(conn_t *conn) {
 	conn_lock(conn);
 
 	logline(log_DEBUG_, "...");
+
+	/* Should come from get_ready/get_one_ready() */
+	assert(conn->connset_l != NULL);
 
 	/* Set the bits correctly so that select() answers again */
 	connset_lock(conn->connset);
@@ -1099,9 +1113,14 @@ connset_handled_ready(conn_t *conn) {
 
 	connset_unlock(conn->connset);
 
-	/* Place it back on the active list */
-	list_remove_l(&conn->connset->ready, &conn->node);
-	list_addtail_l(&conn->connset->active, &conn->node);
+	/* Place it back on the active/inactive list */
+	if (conn->wntevents == CONN_POLLNONE) {
+		/* Already inactive */
+	} else {
+		list_remove_l(conn->connset_l, &conn->node);
+		list_addtail_l(&conn->connset->active, &conn->node);
+		conn->connset_l = &conn->connset->active;
+	}
 
 	logline(log_DEBUG_, "(done)");
 
@@ -1248,32 +1267,39 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 
 	connset_unlock(conn->connset);
 
-	logline(log_DEBUG_, "(A)");
+	logline(log_DEBUG_, CONN_ID " (A)", conn_id(conn));
 
 	/*
 	 * Place currently inactive (wntevents == 0)
 	 * sockets on the active queue (wntevents != 0)
 	 */
 	if (conn->wntevents == 0 && events != 0) {
+		logline(log_DEBUG_, CONN_ID " making active", conn_id(conn));
+
 		/* remove from inactive */
 		list_remove_l(&conn->connset->inactive, &conn->node);
 
 		/* add it to active */
 		list_addtail_l(&conn->connset->active, &conn->node);
+		conn->connset_l = &conn->connset->active;
 
 	} else if (conn->wntevents != 0 && events == 0) {
-		/* remove from active and ready */
+		logline(log_DEBUG_, CONN_ID " making inactive", conn_id(conn));
+
+		/* remove from active or ready */
 		if (conn->connset_l) {
 			list_remove_l(conn->connset_l, &conn->node);
 			conn->connset_l = NULL;
 		}
 
+		/* add it to inactive */
 		list_addtail_l(&conn->connset->inactive, &conn->node);
+		conn->connset_l = &conn->connset->inactive;
 	}
 	/* wntevents == events is handled above as a noop */
 	/* wntevents != 0 && events != 0 would mean stay in the same list */
 
-	logline(log_DEBUG_, "(B)");
+	logline(log_DEBUG_, CONN_ID " (B)", conn_id(conn));
 
 	/* They match now */
 	conn->wntevents = events;

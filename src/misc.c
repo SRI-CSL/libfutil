@@ -376,7 +376,7 @@ void
 set_timeout(struct timespec *timeout, unsigned int nsec) {
 #ifdef _LINUX
         /* get current time */
-	memzero(timeout, sizeof timeout);
+	memzero(timeout, sizeof *timeout);
         clock_gettime(CLOCK_REALTIME, timeout);
         timeout->tv_nsec += nsec;
 	timeout->tv_nsec %= 100000;
@@ -384,7 +384,7 @@ set_timeout(struct timespec *timeout, unsigned int nsec) {
 	struct timeval now;
 
         gettimeofday(&now, NULL);
-	memzero(timeout, sizeof timeout);
+	memzero(timeout, sizeof *timeout);
         timeout->tv_sec = now.tv_sec + 0;
         timeout->tv_nsec += nsec;
 	timeout->tv_nsec %= 100000;
@@ -906,6 +906,67 @@ strerror_r(int errnum, char *strerrbuf, size_t buflen) {
 }
 
 #endif /* _WIN32 */
+
+/*
+ * Returns:
+ * <0 for error
+ *  0 for parent, this one should exit in the caller
+ * >0 for child, this can keep on running
+ */
+int
+futil_daemonize(const char *pidfile) {
+#ifndef _WIN32
+	FILE	*f;
+	int	ret, pid;
+
+	/* Daemonize */
+	pid = fork();
+	if (pid < 0) {
+		logline(log_CRIT_, "Couldn't fork");
+		return (-1);
+	}
+
+	/* Exit the mother fork */
+	if (pid != 0)
+		return (0);
+
+	/* Child fork */
+	setsid();
+
+	/* Chdir to root so we don't keep any dir busy */
+	ret = chdir("/");
+	if (ret != 0) {
+		logline(log_CRIT_, "Could not change dir to /");
+		return (-1);
+	}
+
+	/* Cleanup stdin/out/err */
+	freopen("/dev/null", "r", stdin);
+	freopen("/dev/null", "w", stdout);
+	freopen("/dev/null", "w", stderr);
+	pid = getpid();
+
+	/* Store the PID if needed */
+	if (pidfile != NULL) {
+		f = fopen(pidfile, "w");
+		if (!f)
+		{
+			logline(log_CRIT_, "Could not store PID in file %s", pidfile);
+			return (-1);
+		}
+
+		fprintf(f, "%d", pid);
+		fclose(f);
+	}
+
+	logline(log_INFO_, "Running as PID %d", pid);
+#else
+	logline(log_NOTICE_, "Can't daemonize on Windows");
+	pidfile = pidfile;
+#endif
+
+	return (1);
+}
 
 #define DUMPPACKET_PERLINE 16
 void
