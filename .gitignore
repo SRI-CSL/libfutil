@@ -1,0 +1,9 @@
+# Temporary files
+src/*.o
+src/*.d
+src/*.lo
+src/*.la
+src/*.slo
+src/*.swp
+src/.libs
+
