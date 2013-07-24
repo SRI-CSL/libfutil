@@ -695,12 +695,13 @@ httpsrv_exit(httpsrv_t *hs) {
 }
 
 bool
-httpsrv_init(	httpsrv_t *hs, void *user,
-		httpsrv_f accept,
-		httpsrv_line_f header,
-		httpsrv_f handle,
-		httpsrv_f done,
-		httpsrv_f close)
+httpsrv_init(	httpsrv_t *hs,
+		void *user,
+		httpsrv_f f_accept,
+		httpsrv_line_f f_header,
+		httpsrv_f f_handle,
+		httpsrv_f f_done,
+		httpsrv_f f_close)
 {
 	/* Unique connection number, for easy debugging */
 	static unsigned int httpsrv_id = 0;
@@ -720,11 +721,11 @@ httpsrv_init(	httpsrv_t *hs, void *user,
 
 	/* User provided things */
 	hs->user = user;
-	hs->accept = accept;
-	hs->header = header;
-	hs->handle = handle;
-	hs->done = done;
-	hs->close = close;
+	hs->accept = f_accept;
+	hs->header = f_header;
+	hs->handle = f_handle;
+	hs->done = f_done;
+	hs->close = f_close;
 
 	return (true);
 }
