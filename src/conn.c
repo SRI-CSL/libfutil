@@ -1267,14 +1267,14 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 
 	connset_unlock(conn->connset);
 
-	logline(log_DEBUG_, CONN_ID "(A)", conn_id(conn));
+	logline(log_DEBUG_, CONN_ID " (A)", conn_id(conn));
 
 	/*
 	 * Place currently inactive (wntevents == 0)
 	 * sockets on the active queue (wntevents != 0)
 	 */
 	if (conn->wntevents == 0 && events != 0) {
-		logline(log_DEBUG_, CONN_ID "making active", conn_id(conn));
+		logline(log_DEBUG_, CONN_ID " making active", conn_id(conn));
 
 		/* remove from inactive */
 		list_remove_l(&conn->connset->inactive, &conn->node);
@@ -1284,7 +1284,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		conn->connset_l = &conn->connset->active;
 
 	} else if (conn->wntevents != 0 && events == 0) {
-		logline(log_DEBUG_, CONN_ID "making inactive", conn_id(conn));
+		logline(log_DEBUG_, CONN_ID " making inactive", conn_id(conn));
 
 		/* remove from active or ready */
 		if (conn->connset_l) {
@@ -1299,7 +1299,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 	/* wntevents == events is handled above as a noop */
 	/* wntevents != 0 && events != 0 would mean stay in the same list */
 
-	logline(log_DEBUG_, CONN_ID "(B)", conn_id(conn));
+	logline(log_DEBUG_, CONN_ID " (B)", conn_id(conn));
 
 	/* They match now */
 	conn->wntevents = events;
