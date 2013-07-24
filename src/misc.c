@@ -376,7 +376,7 @@ void
 set_timeout(struct timespec *timeout, unsigned int nsec) {
 #ifdef _LINUX
         /* get current time */
-	memzero(timeout, sizeof timeout);
+	memzero(timeout, sizeof *timeout);
         clock_gettime(CLOCK_REALTIME, timeout);
         timeout->tv_nsec += nsec;
 	timeout->tv_nsec %= 100000;
@@ -384,7 +384,7 @@ set_timeout(struct timespec *timeout, unsigned int nsec) {
 	struct timeval now;
 
         gettimeofday(&now, NULL);
-	memzero(timeout, sizeof timeout);
+	memzero(timeout, sizeof *timeout);
         timeout->tv_sec = now.tv_sec + 0;
         timeout->tv_nsec += nsec;
 	timeout->tv_nsec %= 100000;
