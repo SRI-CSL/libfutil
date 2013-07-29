@@ -941,8 +941,8 @@ connset_poll(connset_t *cs) {
 
 		/* Timeout every 2 seconds to let the main program check */
 		/* if it needs to abort etc */
-		timeout.tv_sec = 0;
-		timeout.tv_usec = 5;
+		timeout.tv_sec = 2;
+		timeout.tv_usec = 0;
 
 		thread_setstate(thread_state_io_wait);
 		errno = 0;

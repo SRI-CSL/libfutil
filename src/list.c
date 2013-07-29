@@ -169,6 +169,8 @@ list_getnext(hlist_t *l) {
 
 	while (thread_keep_running()) {
 
+		LD(LIST_ID " [a]", list_id(l));
+
 		/* Try popping one off the list */
 		node = list_pop_l(l);
 		if (node) {
@@ -177,8 +179,9 @@ list_getnext(hlist_t *l) {
 		}
 
 		/* Nothing yet, thus wait for it */
+		LD(LIST_ID " [b] nothing yet", list_id(l));
 #ifndef _WIN32
-		set_timeout(&timeout, 1);
+		set_timeout(&timeout, 5000);
 
 		/*
 		 * pthread_cond_timedwait() unlocks the mutex temporarily
@@ -187,18 +190,21 @@ list_getnext(hlist_t *l) {
 		l->locks--;
 
 		rc = pthread_cond_timedwait(&l->cond, &l->mutex, &timeout);
+		LD2(LIST_ID " [c] waited 5, rc = %d", list_id(l), rc);
 
 		if (rc == 0) {
 			/* We got the lock again */
 			l->locks++;
 
 			/* Try getting one from the list */
+			LD(LIST_ID " [d] more", list_id(l));
 			continue;
 		}
 
 		/* Timeouts are normal */
 		if (rc == ETIMEDOUT) {
 			/* Timeout locks the mutex */
+			LD(LIST_ID " [e] timeout", list_id(l));
 			l->locks++;
 			continue;
 		}

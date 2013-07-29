@@ -118,7 +118,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 			"%" PRIu64 " "
 #endif
 			"%-5s "
-			"[tr"
+			"[tr "
 #ifdef _DARWIN
 			"%" PRIx64
 #else
@@ -381,20 +381,25 @@ uint64_t gettime(void) {
 void
 set_timeout(struct timespec *timeout, unsigned int nsec) {
 #ifdef _LINUX
-        /* get current time */
+	/* get current time */
 	memzero(timeout, sizeof *timeout);
-        clock_gettime(CLOCK_REALTIME, timeout);
-        timeout->tv_nsec += nsec;
-	timeout->tv_nsec %= 100000;
+	clock_gettime(CLOCK_REALTIME, timeout);
+	timeout->tv_nsec += nsec / 1000;
+	timeout->tv_nsec += (nsec % 1000) * 1000000;
 #else
 	struct timeval now;
 
-        gettimeofday(&now, NULL);
+	gettimeofday(&now, NULL);
 	memzero(timeout, sizeof *timeout);
-        timeout->tv_sec = now.tv_sec + 0;
-        timeout->tv_nsec += nsec;
-	timeout->tv_nsec %= 100000;
+	timeout->tv_sec = now.tv_sec + nsec / 1000;
+	timeout->tv_nsec = (now.tv_usec * 1000) + (nsec % 1000) * 1000000;
 #endif
+	assert(timeout->tv_nsec >= 0);
+
+	while (timeout->tv_nsec > 1000000000) {
+		timeout->tv_sec++;
+		timeout->tv_nsec-=1000000000;
+	}
 }
 #endif
 
