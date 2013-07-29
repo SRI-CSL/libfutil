@@ -118,7 +118,13 @@ logitVA(unsigned int level, const char UNUSED *file,
 			"%" PRIu64 " "
 #endif
 			"%-5s "
-			"[tr%" PRIu64 "] %s() ",
+			"[tr"
+#ifdef _DARWIN
+			"%" PRIx64
+#else
+			"%" PRIu64
+#endif
+			"] %s() ",
 #ifdef SAFDEF_LOG_LONG
 			teem.tm_year+1900, teem.tm_mon+1, teem.tm_mday,
 			teem.tm_hour, teem.tm_min, teem.tm_sec,
