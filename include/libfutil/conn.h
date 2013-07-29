@@ -10,10 +10,6 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/engine.h>
-#else
-typedef struct {
-	uint64_t	nothing;	/* Fake structure */
-} SSL_CTX;
 #endif
 
 typedef struct {
