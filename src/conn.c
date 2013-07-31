@@ -773,6 +773,7 @@ conn_init(conn_t *conn, void *clientdata)
 	conn->connset = NULL;
 	conn->clientdata = clientdata;
 	conn_set_state(conn, CONN_UNUSED);
+	conn->add_contentlen = true;
 
 	return (true);
 }
@@ -1891,31 +1892,35 @@ conn_flush(conn_t *conn) {
 		assert((buf_cur(&conn->send) +
 			buf_cur(&conn->send_headers)) != 0);
 
-		logline(log_DEBUG_,
-			CONN_ID " Outputting Content-Length: %" PRIu64,
-			conn_id(conn), buf_cur(&conn->send));
+		if (conn->add_contentlen &&
+		    (conn->real_contentlen > 0 || buf_cur(&conn->send) > 0)) {
+			logline(log_DEBUG_,
+				CONN_ID " Outputting Content-Length: %" PRIu64,
+				conn_id(conn), buf_cur(&conn->send));
 
 #ifdef NETWORK_DETAILS
-		conn_addheaderf(conn,
-			"CONN-Content-CONN-Length: %" PRIu64 "\r\n",
-			buf_cur(&conn->send));
+			conn_addheaderf(conn,
+				"CONN-Content-CONN-Length: %" PRIu64 "\r\n",
+				buf_cur(&conn->send));
 #endif
 
-		if (conn->real_contentlen != 0) {
-			logline(log_DEBUG_,
-				CONN_ID " Real Content-Length: %" PRIu64,
-				conn_id(conn), conn->real_contentlen);
+			if (conn->real_contentlen != 0) {
+				logline(log_DEBUG_, CONN_ID
+					" Real Content-Length: %" PRIu64,
+					conn_id(conn), conn->real_contentlen);
+			}
+
+			conn_addheaderf(conn,
+				"Content-Length: %" PRIu64 "\r\n",
+				conn->real_contentlen > 0 ?
+					conn->real_contentlen :
+					buf_cur(&conn->send));
+
+			/* Reset it to avoid re-use */
+			conn->real_contentlen = 0;
 		}
 
-		conn_addheaderf(conn,
-			"Content-Length: %" PRIu64 "\r\n",
-			conn->real_contentlen > 0 ?
-				conn->real_contentlen :
-				buf_cur(&conn->send));
-
-		/* Reset it to avoid re-use */
-		conn->real_contentlen = 0;
-
+		/* Separate header from body */
 		conn_addheader(conn, "\r\n");
 
 		logline(log_DEBUG_,
@@ -2074,6 +2079,7 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 	}
 
 	conn_unlock(conn);
+
 	return (ret);
 }
 
@@ -2095,6 +2101,27 @@ conn_copy(conn_t *in, conn_t *out) {
 	conn_buffer_empty(in);
 
 	return (ret);
+}
+
+uint64_t
+conn_copym(conn_t *in, conn_t *out, uint64_t max) {
+	uint64_t	len;
+	bool		ret;
+
+	/* Only copy upto 'max' bytes */
+	len = conn_buffer_cur(in);
+	if (max < len) len = max;
+
+	/* Copy the received buffer from the in to the out */
+	ret = conn_putl(out, conn_buffer(in), len);
+
+	/* All okay */
+	if (ret) {
+		/* Input has been processed */
+		conn_buffer_shift(in, len);
+	}
+
+	return (ret ? len : 0);
 }
 
 bool

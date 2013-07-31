@@ -66,6 +66,7 @@ typedef struct {
 	buf_t			send;		/* Sending side */
 	buf_t			send_headers;	/* Headers to send */
 	uint64_t		real_contentlen;/* Real content length */
+	bool			add_contentlen;	/* Add Content-Length header? */
 
 	/* OpenSSL */
 #ifdef CONN_SSL
@@ -129,6 +130,7 @@ bool conn_addheaderf(conn_t *conn, const char *fmt, ...)
 bool conn_putl(conn_t *conn, const char *txt, unsigned int len);
 bool conn_put(conn_t *conn, const char *txt);
 bool conn_copy(conn_t *in, conn_t *out);
+uint64_t conn_copym(conn_t *in, conn_t *out, uint64_t max);
 bool conn_vprintf(conn_t *conn, const char *fmt, va_list ap)
 	ATTR_FORMAT(printf, 2, 0);
 bool conn_printf(conn_t *conn, const char *fmt, ...)
@@ -160,6 +162,7 @@ bool conn_is_state(conn_t *conn, connstate_t state);
 #define conn_send_isempty(conn) (buf_cur(&(conn)->send) == 0)
 
 #define conn_set_real_contentlen(conn, len) (conn)->real_contentlen = (len)
+#define conn_add_contentlen(conn, yesno) (conn)->add_contentlen = (yesno)
 
 #define conn_header_empty(conn) (buf_empty(&(conn)->send_headers))
 

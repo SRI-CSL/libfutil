@@ -94,6 +94,42 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	uint32_t	t32;
 	uint64_t	t64;
 
+	if (hcl->bodyfwd) {
+		/* Copy some more */
+		t64 = conn_copym(&hcl->conn,
+				 &hcl->bodyfwd->conn,
+				 hcl->bodyfwdlen);
+
+		logline(log_DEBUG_,
+			CONN_ID " BodyFwd %" PRIu64,
+			conn_id(&hcl->conn), t64);
+
+		/* Some bits less */
+		assert(t64 <= hcl->bodyfwdlen);
+		hcl->bodyfwdlen -= t64;
+
+		/* Done or something went wrong? */
+		if (hcl->bodyfwdlen == 0 || t64 == 0) {
+			logline(log_DEBUG_,
+				CONN_ID " BodyFwd Done",
+				conn_id(&hcl->conn));
+
+			/* Inform the caller */
+			assert(hcl->hs->bodyfwddone);
+			hcl->hs->bodyfwddone(hcl, hcl->user);
+
+			/* Done with this */
+			hcl->bodyfwd = NULL;
+			hcl->bodyfwdlen = 0;
+
+			/* Request is done */
+			httpsrv_done(hcl);
+		}
+
+		/* Done with this for now */
+		return;
+	}
+
 	/* As long as we got lines parse them */
 	while (true) {
 		/* There should be something in this buffer */
@@ -470,7 +506,7 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	char			address[256];
 	uint32_t		proto, port;
 
-	logline(log_DEBUG_, "[d%u]", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
 
 	/* Create a cl session */
 	hcl = mcalloc(sizeof *hcl, "httpsrv_client_t");
@@ -566,11 +602,11 @@ httpsrv_poller_thread(void *context) {
 	httpsrv_t	*hs = (httpsrv_t *)context;
 	int		r;
 
-	logline(log_DEBUG_, "[d%u] - start", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "] - start", hs->id);
 
 	/* Handle the sockets in the global connset by polling them */
 	while (thread_keep_running()) {
-		/* logline(log_DEBUG_, "[d%u]", hs->id); */
+		/* logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id); */
 		r = connset_poll(&hs->connset);
 		if (r < 0) {
 			logline(log_NOTICE_, "connset_poll() failed %d", r);
@@ -578,7 +614,7 @@ httpsrv_poller_thread(void *context) {
 		}
 	}
 
-	logline(log_DEBUG_, "[d%u] exiting", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "] exiting", hs->id);
 	return (NULL);
 }
 
@@ -603,7 +639,7 @@ httpsrv_worker_thread(void *context) {
 	conn_t			*conn;
 	httpsrv_client_t	*hcl;
 
-	logline(log_DEBUG_, "[d%u] context", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "] context", hs->id);
 
 	while (thread_keep_running()) {
 
@@ -676,11 +712,11 @@ httpsrv_exit(httpsrv_t *hs) {
 	assert(hs);
 	assert(hs->id != 0);
 
-	logline(log_DEBUG_, "[d%u]", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
 
 	/* Cleanup all open sessions */
 	while ((hcl = (httpsrv_client_t *)list_pop(&hs->sessions))) {
-		logline(log_DEBUG_, "closing [d%u]" CONN_ID,
+		logline(log_DEBUG_, "closing [d%" PRIu64 "]" CONN_ID,
 			hs->id, conn_id(&hcl->conn));
 		httpsrv_client_close(hcl);
 	}
@@ -700,6 +736,7 @@ httpsrv_init(	httpsrv_t *hs,
 		httpsrv_f f_accept,
 		httpsrv_line_f f_header,
 		httpsrv_f f_handle,
+		httpsrv_f f_bodyfwddone,
 		httpsrv_f f_done,
 		httpsrv_f f_close)
 {
@@ -711,7 +748,7 @@ httpsrv_init(	httpsrv_t *hs,
 
 	/* New Id */
 	hs->id = ++httpsrv_id;
-	logline(log_DEBUG_, "[d%u]", hs->id);
+	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
 
 	/* Initialize the transaction & sessions list */
 	list_init(&hs->sessions);
@@ -719,13 +756,14 @@ httpsrv_init(	httpsrv_t *hs,
 	/* Initialize the connections list */
 	connset_init(&hs->connset);
 
-	/* User provided things */
-	hs->user = user;
-	hs->accept = f_accept;
-	hs->header = f_header;
-	hs->handle = f_handle;
-	hs->done = f_done;
-	hs->close = f_close;
+	/* User provided options and callbacks */
+	hs->user	= user;
+	hs->accept	= f_accept;
+	hs->header	= f_header;
+	hs->handle	= f_handle;
+	hs->bodyfwddone = f_bodyfwddone;
+	hs->done	= f_done;
+	hs->close	= f_close;
 
 	return (true);
 }

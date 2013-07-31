@@ -48,7 +48,7 @@ typedef struct {
 	char		content_length_s[32];
 	uint64_t	content_length;
 
-	/* Pre-split version of agrgs */
+	/* Pre-split version of args */
 	unsigned int	argc;
 	char		argsplit[4096];
 	httpsrv_arg_t	argi[128];
@@ -60,17 +60,18 @@ typedef void (*httpsrv_line_f)(httpsrv_client_t *cl, void *user, char *line);
 
 /* All private */
 typedef struct {
-	unsigned int	id;		/* Identifier for debugging */
-	connset_t	connset;	/* Connections */
-	hlist_t		sessions;	/* Sessions */
+	uint64_t		id;		/* Identifier for debugging */
+	connset_t		connset;	/* Connections */
+	hlist_t			sessions;	/* Sessions */
 
 	/* Caller functions (callbacks) */
-	void		*user;		/* User data */
-	httpsrv_f	accept;		/* Accept function - called when connection is accepted */
-	httpsrv_line_f	header;		/* Header function - called for every header */
-	httpsrv_f	handle;		/* Handle function - called when request is complete */
-	httpsrv_f	done;		/* Done function   - called when request is done */
-	httpsrv_f	close;		/* Close function  - called when closing connection */
+	void			*user;		/* User data */
+	httpsrv_f		accept;		/* Accept function - called when connection is accepted */
+	httpsrv_line_f		header;		/* Header function - called for every header */
+	httpsrv_f		handle;		/* Handle function - called when request is complete */
+	httpsrv_f		bodyfwddone;	/* BodyFWDdone     - called when BodyFwd is complete */
+	httpsrv_f		done;		/* Done function   - called when request is done */
+	httpsrv_f		close;		/* Close function  - called when closing connection */
 } httpsrv_t;
 
 /* Per-connection/session from mod_dgw or listeners */
@@ -89,12 +90,15 @@ struct httpsrv_client {
 	bool			close;		/* Close it? */
 	bool			busy;		/* Busy with a request? */
 	void			*user;		/* User data */
+	httpsrv_client_t	*bodyfwd;	/* Forward the body? */
+	uint64_t		bodyfwdlen;	/* Length still to forward */
 };
 
 bool httpsrv_init(httpsrv_t *hs, void *user,
 			httpsrv_f accept,
 			httpsrv_line_f header,
 			httpsrv_f handle,
+			httpsrv_f bodyfwddone,
 			httpsrv_f done,
 			httpsrv_f close);
 bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned int numworkers);
