@@ -94,9 +94,15 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	uint32_t	t32;
 	uint64_t	t64, len;
 
+        int once = 0;
 	/* As long as we got lines parse them */
 	while (true) {
-
+          if(once < 30){
+            logline(log_DEBUG_, ">>>>>>>>>>>>>>>>>>>>>>top: incoming %d", (int)hcl->readbodylen);
+            logline(log_DEBUG_, ">>>>>>>>>>>>>>>>>>>>>>top: read     %d", (int)hcl->readbodyoff);
+            once += 1;
+          }
+          
 		/* Forwarding the body? */
 		if (hcl->bodyfwd) {
 			/* Copy some more */
