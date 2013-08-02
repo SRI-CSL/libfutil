@@ -377,28 +377,36 @@ uint64_t gettime(void) {
 #endif /* __MACH__ */
 }
 
+/*
+ *             1 sec          ( sec) =
+ *         1.000 milliseconds (msec) =
+ *     1.000.000 microseconds (usec) =
+ * 1.000.000.000 nanoseconds  (nsec)
+ *
+ * win32 Sleep() uses milliseconds
+ */
 #ifndef _WIN32
 void
-set_timeout(struct timespec *timeout, unsigned int nsec) {
+set_timeout(struct timespec *timeout, unsigned int msec) {
 #ifdef _LINUX
 	/* get current time */
 	memzero(timeout, sizeof *timeout);
 	clock_gettime(CLOCK_REALTIME, timeout);
-	timeout->tv_nsec += nsec / 1000;
-	timeout->tv_nsec += (nsec % 1000) * 1000000;
+	timeout->tv_nsec += msec / 1000;
+	timeout->tv_nsec += (msec % 1000) * 1000000;
 #else
 	struct timeval now;
 
 	gettimeofday(&now, NULL);
 	memzero(timeout, sizeof *timeout);
-	timeout->tv_sec = now.tv_sec + nsec / 1000;
-	timeout->tv_nsec = (now.tv_usec * 1000) + (nsec % 1000) * 1000000;
+	timeout->tv_sec = now.tv_sec + msec / 1000;
+	timeout->tv_nsec = (now.tv_usec * 1000) + (msec % 1000) * 1000000;
 #endif
 	assert(timeout->tv_nsec >= 0);
 
 	while (timeout->tv_nsec > 1000000000) {
 		timeout->tv_sec++;
-		timeout->tv_nsec-=1000000000;
+		timeout->tv_nsec -= 1000000000;
 	}
 }
 #endif

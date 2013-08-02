@@ -940,10 +940,14 @@ connset_poll(connset_t *cs) {
 		memcpy(&fd_r, &cs->fd_read, sizeof fd_r);
 		memcpy(&fd_w, &cs->fd_write, sizeof fd_w);
 
-		/* Timeout every 2 seconds to let the main program check */
-		/* if it needs to abort etc */
-		timeout.tv_sec = 2;
-		timeout.tv_usec = 0;
+		/*
+		 * Timeout every 1/10th of a second = 100.000 microseconds
+		 * (1 sec = 1.000.000 usec)
+		 * to let the main program check if it needs to abort etc
+		 * note that this also gives the chance to add new FDs
+		 */
+		timeout.tv_sec = 0;
+		timeout.tv_usec = (100 * 1000);
 
 		thread_setstate(thread_state_io_wait);
 		errno = 0;

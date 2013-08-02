@@ -40,7 +40,7 @@ void thread_stopall(bool force);
 bool thread_add(const char *description, void *(*start_routine)(void *),
 		void *arg);
 bool thread_setstate(thread_status_t state);
-bool thread_sleep(unsigned int seconds, unsigned int nsecondss);
+bool thread_sleep(unsigned int msec);
 mythread_t *thread_getthis(void);
 
 void thread_serve(void);

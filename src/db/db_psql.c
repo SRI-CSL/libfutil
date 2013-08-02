@@ -862,7 +862,7 @@ db_connect(dbconn_t *db) {
 			i+1, max, db->keeptrying ? " [keeptrying]" : "");
 
 		/* Sleep at least 2 seconds, max 30 seconds before retrying */
-		thread_sleep((i % 28) + 2, 0);
+		thread_sleep(((i % 28) + 2) * 1000);
 	}
 
 	return ((db->conn != NULL) ? true : false);

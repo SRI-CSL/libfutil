@@ -167,9 +167,9 @@ thread_serve(void) {
 	thread_unlock(t);
 }
 
-/* Let the thread sleep for X seconds + Y nsecs, but allow it to be breaked for exit */
+/* Let the thread sleep for X msecs, but allow it to be interrupted for exit */
 bool
-thread_sleep(unsigned int seconds, unsigned int nseconds) {
+thread_sleep(unsigned int msec) {
 	mythread_t	*t;
 #ifndef _WIN32
 	struct timespec	timeout;
@@ -186,11 +186,11 @@ thread_sleep(unsigned int seconds, unsigned int nseconds) {
 
 	t->state = thread_state_sleeping;
 #ifndef _WIN32
-	set_timeout(&timeout, 2);
+	set_timeout(&timeout, msec);
 	rc = pthread_cond_timedwait(&t->cond, &t->mutex, &timeout);
 #else
 	/* XXX: Add support for conditional breaking (win32) */
-	Sleep((seconds * 1000) + nseconds);
+	Sleep(msec);
 	rc = ETIMEDOUT;
 #endif
 	t->state = thread_state_running;
@@ -201,10 +201,10 @@ thread_sleep(unsigned int seconds, unsigned int nseconds) {
 #ifdef DEBUG
 	if (rc != ETIMEDOUT && rc != 0) {
 		logline(log_ERR_,
-			"cond_timedwait(tr%" PRIu64 ", %u, %u) on "
+			"cond_timedwait(tr%" PRIu64 ", %u) on "
 			"%s returned %u",
 			t->thread_num,
-			seconds, nseconds,
+			msec,
 			t->description ? t->description : "<no description>",
 			rc);
 	}

@@ -214,7 +214,7 @@ list_getnext(hlist_t *l) {
 		assert(false);
 #else
 		/* XXX: Add support for conditional breaking (win32) */
-		Sleep((5 * 1000) + 2);
+		Sleep(5000);
 #endif
 		break;
 	}

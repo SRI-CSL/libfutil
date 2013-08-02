@@ -194,7 +194,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					logline(log_DEBUG_,
 						"POST without Content");
 					httpsrv_error(hcl, 400,
-						"Unknown HTTP method");
+						"POST without Content");
 					hcl->close = true;
 				}
 			}
