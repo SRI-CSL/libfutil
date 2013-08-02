@@ -1674,7 +1674,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 	unsigned int	len;
 	int		i;
 
-	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	conn_lock(conn);
 
@@ -1719,6 +1719,8 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 				buf[len] = '\0';
 
 				conn_unlock(conn);
+				logline(log_DEBUG_, CONN_ID " line = %u", conn_id(conn), len);
+
 				return (len);
 			}
 		}
@@ -1737,16 +1739,20 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 		i = conn_recvA(conn);
 		if (i == 0) {
 			/* Blocking socket, thus cannot happen */
+			logline(log_DEBUG_, CONN_ID " blocked", conn_id(conn));
 			assert(false);
 			break;
 		} else if (i < 0) {
 			/* Connection got closed etc */
 			conn_unlock(conn);
+			logline(log_DEBUG_, CONN_ID " closed", conn_id(conn));
 			return (i);
 		}
 	}
 
 	conn_unlock(conn);
+
+	logline(log_DEBUG_, CONN_ID " nothing", conn_id(conn));
 	return (0);
 }
 
@@ -1990,6 +1996,8 @@ conn_flush(conn_t *conn) {
 	}
 
 	if (wlen == len) {
+		logline(log_NOTICE_, CONN_ID " Written all", conn_id(conn));
+
 		/* Nothing further to send */
 		buf_empty(&conn->send);
 		buf_empty(&conn->send_headers);
@@ -1997,6 +2005,10 @@ conn_flush(conn_t *conn) {
 		/* We always want to know about this */
 		conn_eventsA(conn, CONN_POLLIN);
 	} else {
+		logline(log_NOTICE_,
+			CONN_ID " Written %" PRIu64 " of %" PRIu64,
+			conn_id(conn), wlen, len);
+
 		/* Headers will go first */
 		if (buf_cur(&conn->send_headers) > 0) {
 			if (wlen > buf_cur(&conn->send_headers)) {
