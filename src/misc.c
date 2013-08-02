@@ -1006,6 +1006,8 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 		return;
 	}
 
+	mutex_lock(l_mutex);
+
 	/* Limit the length? */
 	if (len > 2000) {
 		fprintf(l_log_output, "Only showing first 200 of %" PRIu64 "\n", len);
@@ -1046,6 +1048,8 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 			fprintf(l_log_output, "\n");
 		}
 	}
+
+	mutex_unlock(l_mutex);
 }
 
 /* Verbose error messages for parse_iso8601_time() */
