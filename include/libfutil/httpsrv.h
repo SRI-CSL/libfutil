@@ -92,6 +92,10 @@ struct httpsrv_client {
 	void			*user;		/* User data */
 	httpsrv_client_t	*bodyfwd;	/* Forward the body? */
 	uint64_t		bodyfwdlen;	/* Length still to forward */
+
+	char			*readbody;	/* POST body destination */
+	uint64_t		readbodylen;	/* How much of the body to read */
+	uint64_t		readbodyoff;	/* How much already read */
 };
 
 bool httpsrv_init(httpsrv_t *hs, void *user,
