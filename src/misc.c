@@ -459,7 +459,7 @@ bool misc_map(const char *str, const misc_map_t *map, char *data) {
 		memcpy(&data[map[i].offset], &str[l], len);
 
 		/* Make sure the string is terminated */
-		data[map[i].offset + map[i].len - 1] = '\0';
+		data[map[i].offset + len] = '\0';
 
 		return (true);
 	}
