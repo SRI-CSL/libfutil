@@ -94,44 +94,45 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	uint32_t	t32;
 	uint64_t	t64;
 
-	if (hcl->bodyfwd) {
-		/* Copy some more */
-		t64 = conn_copym(&hcl->conn,
-				 &hcl->bodyfwd->conn,
-				 hcl->bodyfwdlen);
-
-		logline(log_DEBUG_,
-			CONN_ID " BodyFwd %" PRIu64,
-			conn_id(&hcl->conn), t64);
-
-		/* Some bits less */
-		assert(t64 <= hcl->bodyfwdlen);
-		hcl->bodyfwdlen -= t64;
-
-		/* Done or something went wrong? */
-		if (hcl->bodyfwdlen == 0 || t64 == 0) {
-			logline(log_DEBUG_,
-				CONN_ID " BodyFwd Done",
-				conn_id(&hcl->conn));
-
-			/* Inform the caller */
-			assert(hcl->hs->bodyfwddone);
-			hcl->hs->bodyfwddone(hcl, hcl->user);
-
-			/* Done with this */
-			hcl->bodyfwd = NULL;
-			hcl->bodyfwdlen = 0;
-
-			/* Request is done */
-			httpsrv_done(hcl);
-		}
-
-		/* Done with this for now */
-		return;
-	}
-
 	/* As long as we got lines parse them */
 	while (true) {
+
+		/* Forwarding the body? */
+		if (hcl->bodyfwd) {
+			/* Copy some more */
+			t64 = conn_copym(&hcl->conn,
+					&hcl->bodyfwd->conn,
+					hcl->bodyfwdlen);
+
+			logline(log_DEBUG_,
+					CONN_ID " BodyFwd %" PRIu64,
+					conn_id(&hcl->conn), t64);
+
+			/* Some bits less */
+			assert(t64 <= hcl->bodyfwdlen);
+			hcl->bodyfwdlen -= t64;
+
+			/* Done or something went wrong? */
+			if (hcl->bodyfwdlen == 0 || t64 == 0) {
+				logline(log_DEBUG_,
+						CONN_ID " BodyFwd Done",
+						conn_id(&hcl->conn));
+
+				/* Inform the caller */
+				assert(hcl->hs->bodyfwddone);
+				hcl->hs->bodyfwddone(hcl, hcl->user);
+
+				/* Done with this */
+				hcl->bodyfwd = NULL;
+				hcl->bodyfwdlen = 0;
+
+				/* Request is done */
+				httpsrv_done(hcl);
+			}
+
+			/* Done with this for now */
+		}
+
 		/* There should be something in this buffer */
 		i = conn_recvline(&hcl->conn, line, sizeof line);
 		if (i == 0) {
@@ -163,6 +164,11 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		/* Empty line == end of command */
 		if (l == 1 && line[0] == '\n') {
 			logline(log_DEBUG_, "Got an empty line");
+
+			/* Stray \n, ignore it */
+			if (strlen(hcl->the_request) == 0) {
+				continue;
+			}
 
 			/*
 			 * Note: for POST we read in the body when the caller wants it
@@ -204,10 +210,12 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 			/* Process it */
 			assert(hcl->hs->handle);
+			logline(log_DEBUG_, "handling");
 			hcl->hs->handle(hcl, hcl->user);
+			logline(log_DEBUG_, "handling complete");
 
 			/* Next */
-			break;
+			continue;
 		}
 
 		/* Remove trailing \n */
@@ -265,9 +273,6 @@ void
 httpsrv_done(httpsrv_client_t *hcl) {
 	logline(log_DEBUG_, CONN_ID " is done", conn_id(&hcl->conn));
 
-	/* Done, thus not busy anymore */
-	hcl->busy = false;
-
 	/* Call the client's done function */
 	if (hcl->hs->done)
 		hcl->hs->done(hcl, hcl->user);
@@ -277,6 +282,9 @@ httpsrv_done(httpsrv_client_t *hcl) {
 
 	/* No method yet */
 	hcl->method = HTTP_M_NONE;
+
+	/* Last activity */
+	hcl->lastact = gettime();
 
 	/* Empty Request */
 	memzero(&hcl->the_request, sizeof hcl->the_request);
@@ -289,6 +297,12 @@ httpsrv_done(httpsrv_client_t *hcl) {
 
 	/* No arguments yet either */
 	hcl->headers.argc = 0;
+
+	/* Reset */
+	hcl->close = false;
+	hcl->busy = false;
+	hcl->bodyfwd = NULL;
+	hcl->bodyfwdlen = 0;
 
 	/* Tell it to try to output (flush) */
 	conn_events(&hcl->conn, CONN_POLLIN | CONN_POLLOUT);
@@ -434,13 +448,13 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 	/* Note that this client hit us */
 	logline(log_DEBUG_,
 		CONN_ID "\n"
-		"HTTP: the_request: %s\n"
+		"HTTP: the_request: %s (%u)\n"
 		"HTTP: hostname: %s\n"
 		"HTTP: uri: %s\n"
 		"HTTP: local: %s/%u\n"
 		"HTTP: remote: %s/%u",
 		conn_id(&hcl->conn),
-		hcl->the_request,
+		hcl->the_request, (unsigned int)strlen(hcl->the_request),
 		hcl->headers.hostname,
 		hcl->headers.uri,
 		hcl->headers.local_ip, hcl->headers.local_port,
