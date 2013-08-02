@@ -190,17 +190,16 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				logline(log_DEBUG_, "No Remote Port found");
 			}
 
-			/* Post? requires a content-length */
+			/* Post? Requires a content-length */
 			if (hcl->method == HTTP_M_POST) {
 				if (sscanf(hcl->headers.content_length_s,
-					   "%" PRIu64, &t64) == 1 &&
-					t64 != 0) {
+					   "%" PRIu64, &t64) == 1) {
 					hcl->headers.content_length = t64;
 				} else {
 					logline(log_DEBUG_,
-						"POST without Content");
+						"POST without Content-Length");
 					httpsrv_error(hcl, 400,
-						"POST without Content");
+						"POST without Content-Length");
 					hcl->close = true;
 				}
 			}
