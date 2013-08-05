@@ -41,7 +41,7 @@ typedef struct {
 	char		local_port_s[8];
 	uint32_t	local_port;
 	char		hostname[256];
-	char		uri[512];
+	char		uri[1024];
 	char		args[4096];
 	char		cookie[4096];
 	char		content_type[256];

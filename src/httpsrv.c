@@ -96,7 +96,6 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 	/* As long as we got lines parse them */
 	while (true) {
-
 		/* Forwarding the body? */
 		if (hcl->bodyfwd) {
 			/* Copy some more */
@@ -107,6 +106,18 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			logline(log_DEBUG_,
 					CONN_ID " BodyFwd %" PRIu64,
 					conn_id(&hcl->conn), len);
+
+			if (len == 0) {
+				/* Try to get more */
+				i = conn_recv(&hcl->conn);
+				if (i == 0) {
+					/* Try another time */
+					return;
+				}
+
+				/* We got some more */
+				continue;
+			}
 
 			/* Some bits less */
 			assert(len <= hcl->bodyfwdlen);
@@ -137,10 +148,30 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		if (hcl->readbody) {
 			len = conn_buffer_cur(&hcl->conn);
 
+			if (len == 0) {
+				/* Try to get more */
+				i = conn_recv(&hcl->conn);
+				if (i == 0) {
+					/* Try another time */
+					return;
+				}
+
+				/* We got some more */
+				continue;
+			}
+
 			/* Only read the body even if there is more */
 			if (len > hcl->readbodylen) {
 				len = hcl->readbodylen;
 			}
+
+			logline(log_DEBUG_,
+					CONN_ID " ReadBody %" PRIu64
+					" / %" PRIu64 " / %" PRIu64,
+					conn_id(&hcl->conn),
+					len,
+					hcl->readbodylen,
+					hcl->readbodyoff);
 
 			/* Copy it to the user supplied buffer */
 			memcpy(	&hcl->readbody[hcl->readbodyoff],
@@ -162,6 +193,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				hcl->hs->handle(hcl, hcl->user);
 				logline(log_DEBUG_, "handling body complete");
 			}
+
+			assert(len != 0);
 
 			continue;
 		}
