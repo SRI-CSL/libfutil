@@ -179,7 +179,7 @@ thread_sleep(unsigned int msec) {
 	t = thread_getthis();
 
 	/* Nothing we can do, return with failure so that it will abort */
-	if (!t) {
+	if (t == NULL) {
 		/* mdolog(LOG_ERR, "Couldn't find my thread while trying to sleep!\n"); */
 		return (false);
 	}
@@ -209,6 +209,7 @@ thread_sleep(unsigned int msec) {
 			rc);
 	}
 #endif
+	assert(rc != EINVAL);
 
 	return (rc == ETIMEDOUT ? true : false);
 }
@@ -289,6 +290,7 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 
 	node_init(&t->node);
 	mutex_init(t->mutex);
+	cond_init(t->cond);
 	t->thread_num = ++thread_num;
 	t->description = mstrdup(description, "thread_description");
 	t->start_routine = start_routine;
@@ -297,7 +299,6 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 
 	/* Create the thread if needed (only the 'main' thread should not do this) */
 	if (start_routine) {
-		cond_init(t->cond);
 #ifndef _WIN32
 		if (0 != pthread_create(&t->thread, NULL, thread_autoremove, t))
 #else
