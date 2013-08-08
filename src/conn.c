@@ -1582,7 +1582,9 @@ conn_recvA(conn_t *conn) {
 #ifdef CONN_SSL
 	if (conn->ssl) {
 		len = sizeof conn->ssl_in - conn->ssl_in_len;
-		logline(log_DEBUG_, CONN_ID " ssl left = %" PRIu64, conn_id(conn), len);
+		logline(log_DEBUG_,
+			CONN_ID " ssl, cur = %" PRIu64 ", left = %" PRIu64,
+			conn_id(conn), conn_buffer_cur(conn), len);
 		thread_setstate(thread_state_io_read);
 		r = recv(conn->sock, &conn->ssl_in[conn->ssl_in_len],
 			 len, MSG_NOSIGNAL);
@@ -1590,7 +1592,9 @@ conn_recvA(conn_t *conn) {
 	} else {
 #endif /* CONN_SSL */
 		len = conn_buffer_left(conn);
-		logline(log_DEBUG_, CONN_ID " left = %" PRIu64, conn_id(conn), len);
+		logline(log_DEBUG_,
+			CONN_ID " cur = %" PRIu64 ", left = %" PRIu64,
+			conn_id(conn), conn_buffer_cur(conn), len);
 		thread_setstate(thread_state_io_read);
 		r = recv(conn->sock, buf_bufend(&conn->recv),
 			len, MSG_NOSIGNAL);
@@ -1671,7 +1675,7 @@ conn_recv(conn_t *conn) {
 int
 conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 	char		*s;
-	unsigned int	len;
+	uint64_t	len;
 	int		i;
 
 	logline(log_DEBUG_, CONN_ID, conn_id(conn));
@@ -1683,19 +1687,31 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 
 		/* Already something in our buffer? */
 		if (buf_cur(&conn->recv) > 0) {
-
-			/* Check for \n */
-			s = strchr(buf_buffer(&conn->recv), '\n');
+			s = buf_find(&conn->recv, 0, '\n', true);
 
 			/* There already is a full line in the buffer */
 			if (s != NULL) {
+				/* ASCII NUL '\0'? */
+				if (*s == '\0') {
+					logline(log_DEBUG_,
+						CONN_ID
+						" ASCII NUL char found",
+						conn_id(conn));
+					dumppacket(LOG_ERR,
+						   (uint8_t *)
+						   buf_buffer(&conn->recv),
+						   buf_cur(&conn->recv));
+					/* Not acceptable in lines */
+					return (-EINVAL);
+				}
+
 				len = (s - buf_buffer(&conn->recv)) + 1;
 
 				/* Does it not fit? */
 				if (len > buflen) {
 					logline(log_DEBUG_,
 						CONN_ID " line does not fit "
-						"%u > %u",
+						"%" PRIu64 " > %u",
 						conn_id(conn),
 						len, buflen);
 					conn_unlock(conn);
@@ -1719,7 +1735,9 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 				buf[len] = '\0';
 
 				conn_unlock(conn);
-				logline(log_DEBUG_, CONN_ID " line = %u", conn_id(conn), len);
+				logline(log_DEBUG_,
+					CONN_ID " line = %" PRIu64,
+					conn_id(conn), len);
 
 				return (len);
 			}
@@ -1728,24 +1746,30 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 		/* non-blocking socket? Then we are done */
 		if (conn->connset != NULL) {
 			logline(log_DEBUG_,
-				CONN_ID " buffer empty, please conn_recv() more",
+				CONN_ID " buffer empty",
 				conn_id(conn));
 			break;
 		}
 
-		logline(log_DEBUG_, CONN_ID " trying to get more", conn_id(conn));
+		logline(log_DEBUG_,
+			CONN_ID " trying to get more",
+			conn_id(conn));
 
 		/* Receive more */
 		i = conn_recvA(conn);
 		if (i == 0) {
 			/* Blocking socket, thus cannot happen */
-			logline(log_DEBUG_, CONN_ID " blocked", conn_id(conn));
+			logline(log_DEBUG_,
+				CONN_ID " blocked",
+				conn_id(conn));
 			assert(false);
 			break;
 		} else if (i < 0) {
 			/* Connection got closed etc */
 			conn_unlock(conn);
-			logline(log_DEBUG_, CONN_ID " closed", conn_id(conn));
+			logline(log_DEBUG_,
+				CONN_ID " closed (err = %d)",
+				conn_id(conn), i);
 			return (i);
 		}
 	}
@@ -1996,7 +2020,7 @@ conn_flush(conn_t *conn) {
 	}
 
 	if (wlen == len) {
-		logline(log_NOTICE_, CONN_ID " Written all", conn_id(conn));
+		logline(log_DEBUG_, CONN_ID " Written all", conn_id(conn));
 
 		/* Nothing further to send */
 		buf_empty(&conn->send);
