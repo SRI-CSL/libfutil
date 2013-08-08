@@ -206,3 +206,20 @@ buf_printf(buf_t *buf, const char *fmt, ...) {
 	return (ret);
 }
 
+/* Simple char searcher that optionally breaks at ASCII-NUL '\0' */
+char *
+buf_find(buf_t *buf, uint64_t offset, char chr, bool findnul) {
+	uint64_t i, len = buf_cur(buf);
+
+	for (i = offset; i < len; i++) {
+		if (buf->buf[i] == chr ||
+		    (findnul && buf->buf[i] == '\0')) {
+			return &buf->buf[i];
+		}
+	}
+
+	/* Not found */
+	return NULL;
+}
+
+

@@ -36,4 +36,6 @@ bool buf_minsize(buf_t *buf, unsigned int len);
 #define buf_cur(buff) ((buff)->offset)
 #define buf_left(buff) (buf_max(buff) - buf_cur(buff) - 1)
 
+char *buf_find(buf_t *buf, uint64_t offset, char chr, bool findnul);
+
 #endif /* BUF_H */
