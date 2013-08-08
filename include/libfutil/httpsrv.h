@@ -98,6 +98,9 @@ struct httpsrv_client {
 	uint64_t		readbodyoff;	/* How much already read */
 };
 
+#define HCL_IDn "%" PRIu64
+#define HCL_ID "[hcl" HCL_IDn "]"
+
 bool httpsrv_init(httpsrv_t *hs, void *user,
 			httpsrv_f accept,
 			httpsrv_line_f header,

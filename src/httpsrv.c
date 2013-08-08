@@ -62,7 +62,9 @@ void
 httpsrv_client_close(httpsrv_client_t *hcl);
 void
 httpsrv_client_close(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, "Closing session " CONN_ID, conn_id(&hcl->conn));
+	logline(log_DEBUG_,
+		"Closing session " HCL_ID ", " CONN_ID,
+		hcl->id, conn_id(&hcl->conn));
 
 	if (hcl->hs->close)
 		hcl->hs->close(hcl, hcl->user);
@@ -104,8 +106,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->bodyfwdlen);
 
 			logline(log_DEBUG_,
-					CONN_ID " BodyFwd %" PRIu64,
-					conn_id(&hcl->conn), len);
+				HCL_ID " " CONN_ID " BodyFwd %" PRIu64,
+				hcl->id, conn_id(&hcl->conn), len);
 
 			if (len == 0) {
 				/* Try to get more */
@@ -126,8 +128,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			/* Done or something went wrong? */
 			if (hcl->bodyfwdlen == 0 || len == 0) {
 				logline(log_DEBUG_,
-						CONN_ID " BodyFwd Done",
-						conn_id(&hcl->conn));
+					HCL_ID " " CONN_ID " BodyFwd Done",
+					hcl->id, conn_id(&hcl->conn));
 
 				/* Inform the caller */
 				assert(hcl->hs->bodyfwddone);
@@ -166,12 +168,13 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			}
 
 			logline(log_DEBUG_,
-					CONN_ID " ReadBody %" PRIu64
-					" / %" PRIu64 " / %" PRIu64,
-					conn_id(&hcl->conn),
-					len,
-					hcl->readbodylen,
-					hcl->readbodyoff);
+				HCL_ID " " CONN_ID " ReadBody %" PRIu64
+				" / %" PRIu64 " / %" PRIu64,
+				hcl->id,
+				conn_id(&hcl->conn),
+				len,
+				hcl->readbodylen,
+				hcl->readbodyoff);
 
 			/* Copy it to the user supplied buffer */
 			memcpy(	&hcl->readbody[hcl->readbodyoff],
@@ -189,9 +192,16 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			if (hcl->readbodylen == 0) {
 				/* Process it */
 				assert(hcl->hs->handle);
-				logline(log_DEBUG_, "handling body");
+
+				logline(log_DEBUG_,
+					HCL_ID " handling body",
+					hcl->id);
+
 				hcl->hs->handle(hcl, hcl->user);
-				logline(log_DEBUG_, "handling body complete");
+
+				logline(log_DEBUG_,
+					HCL_ID " handling body complete",
+					hcl->id);
 			}
 
 			assert(len != 0);
@@ -203,8 +213,17 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		i = conn_recvline(&hcl->conn, line, sizeof line);
 		if (i == 0) {
 			logline(log_DEBUG_,
-				CONN_ID " No new line yet",
+				HCL_ID " " CONN_ID " No new line yet",
+				hcl->id,
 				conn_id(&hcl->conn));
+
+			/* Dump what we got */
+			len = conn_buffer_cur(&hcl->conn);
+			if (len > 0) {
+				dumppacket(LOG_DEBUG,
+					 (uint8_t *)conn_buffer(&hcl->conn),
+					 len);
+			}
 
 			/* Try to get more lines */
 			i = conn_recv(&hcl->conn);
@@ -219,7 +238,9 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		}
 
 		if (i < 0) {
-			logline(log_DEBUG_, "Receive line problem, closing");
+			logline(log_DEBUG_,
+				HCL_ID " Receive line problem, closing",
+				hcl->id);
 			/* Remote end closed socket */
 			hcl->close = true;
 			return;
@@ -229,7 +250,9 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 		/* Empty line == end of command */
 		if (l == 1 && line[0] == '\n') {
-			logline(log_DEBUG_, "Got an empty line");
+			logline(log_DEBUG_,
+				HCL_ID " Got an empty line",
+				hcl->id);
 
 			/* Stray \n, ignore it */
 			if (strlen(hcl->the_request) == 0) {
@@ -246,14 +269,18 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				t32 != 0) {
 				hcl->headers.local_port = t32;
 			} else {
-				logline(log_DEBUG_, "No Local Port found");
+				logline(log_DEBUG_,
+					HCL_ID " No Local Port found",
+					hcl->id);
 			}
 
 			if (sscanf(hcl->headers.remote_port_s, "%u", &t32) == 1 &&
 				t32 != 0) {
 				hcl->headers.remote_port = t32;
 			} else {
-				logline(log_DEBUG_, "No Remote Port found");
+				logline(log_DEBUG_,
+					HCL_ID " No Remote Port found",
+					hcl->id);
 			}
 
 			/* Post? Requires a content-length */
@@ -263,7 +290,10 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->headers.content_length = t64;
 				} else {
 					logline(log_DEBUG_,
-						"POST without Content-Length");
+						HCL_ID
+						" POST without Content-Length",
+						hcl->id);
+
 					httpsrv_error(hcl, 400,
 						"POST without Content-Length");
 					hcl->close = true;
@@ -275,9 +305,16 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 			/* Process it */
 			assert(hcl->hs->handle);
-			logline(log_DEBUG_, "handling");
+
+			logline(log_DEBUG_,
+				HCL_ID " handling",
+				hcl->id);
+
 			hcl->hs->handle(hcl, hcl->user);
-			logline(log_DEBUG_, "handling complete");
+
+			logline(log_DEBUG_,
+				HCL_ID " handling complete",
+				hcl->id);
 
 			/* Next */
 			continue;
@@ -286,7 +323,9 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		/* Remove trailing \n */
 		line[--l] = '\0';
 
-		logline(log_DEBUG_, "got line (len=%u) : %s", l, line);
+		logline(log_DEBUG_,
+			HCL_ID" got line (len=%u) : %s",
+			hcl->id, l, line);
 
 		/* No method yet? */
 		if (hcl->method == HTTP_M_NONE) {
@@ -302,14 +341,20 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			}
 
 			if (hcl->method == HTTP_M_NONE) {
-				logline(log_NOTICE_, "Unknown HTTP: %s", line);
+				logline(log_NOTICE_,
+					HCL_ID " Unknown HTTP: %s",
+					hcl->id, line);
+
 				httpsrv_error(hcl, 400, "Unknown HTTP method");
 				hcl->close = true;
 				return;
 			}
 
 			if (l >= sizeof hcl->the_request) {
-				logline(log_NOTICE_, "Request Too Big: %s", line);
+				logline(log_NOTICE_,
+					HCL_ID " Request Too Big: %s",
+					hcl->id, line);
+
 				httpsrv_error(hcl, 400, "Request Too Big"); /* XXX: correct HTTP code */
 				hcl->close = true;
 				return;
@@ -336,7 +381,9 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 void
 httpsrv_done(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, CONN_ID " is done", conn_id(&hcl->conn));
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " is done",
+		hcl->id, conn_id(&hcl->conn));
 
 	/* Call the client's done function */
 	if (hcl->hs->done)
@@ -379,13 +426,15 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	 * Thus try to parse more lines if there are more already
 	 */
 	if (!(conn_buffer_isempty(&hcl->conn))) {
-		logline(log_DEBUG_, CONN_ID " has data in receive buffer",
-			conn_id(&hcl->conn));
+		logline(log_DEBUG_,
+			HCL_ID " " CONN_ID " has data in receive buffer",
+			hcl->id, conn_id(&hcl->conn));
 
 		httpsrv_handle_http(hcl);
 	} else {
-		logline(log_DEBUG_, CONN_ID " has nothing queued",
-			conn_id(&hcl->conn));
+		logline(log_DEBUG_,
+			HCL_ID " " CONN_ID " has nothing queued",
+			hcl->id, conn_id(&hcl->conn));
 	}
 }
 
@@ -394,15 +443,19 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 	unsigned int	j, ao = 0, uo = 0;
 	char		c, *line = hcl->the_request;
 	bool		isarg = false;
+	uint32_t	proto;
 
 	/* Only parse it once */
 	if (hcl->headers.args[0] != '\0') {
-		logline(log_DEBUG_, CONN_ID " Not parsing again",
-			conn_id(&hcl->conn));
+		logline(log_DEBUG_,
+			HCL_ID " " CONN_ID " Not parsing again",
+			hcl->id, conn_id(&hcl->conn));
 		return (true);
 	}
 
-	logline(log_DEBUG_, CONN_ID " scanning: %s", conn_id(&hcl->conn), line);
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " scanning: %s",
+		hcl->id, conn_id(&hcl->conn), line);
 
 	assert(sizeof hcl->headers.argsplit == sizeof hcl->headers.args);
 
@@ -433,8 +486,9 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 				hcl->headers.argc++;
 				if (hcl->headers.argc >=
 					lengthof(hcl->headers.argi)) {
-					logline(log_NOTICE_, CONN_ID " Too many args",
-						conn_id(&hcl->conn));
+					logline(log_NOTICE_,
+						HCL_ID " " CONN_ID " Too many args",
+						hcl->id, conn_id(&hcl->conn));
 					httpsrv_error(hcl, 400, "Too many args");
 					return (false);
 				}
@@ -446,8 +500,9 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		} else if (c == '%') {
 			/* Escaped */
 			if (!isxdigit(line[j+1]) || !isxdigit(line[j+2])) {
-				logline(log_NOTICE_, CONN_ID " Broken URL: %s",
-					conn_id(&hcl->conn), line);
+				logline(log_NOTICE_,
+					HCL_ID " " CONN_ID " Broken URL: %s",
+					hcl->id, conn_id(&hcl->conn), line);
 				httpsrv_error(hcl, 400, "Broken URL");
 				return (false);
 			}
@@ -480,8 +535,8 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 				if (hcl->headers.argc >=
 					lengthof(hcl->headers.argi)) {
 					logline(log_NOTICE_,
-						CONN_ID "Too many args",
-						conn_id(&hcl->conn));
+						HCL_ID " " CONN_ID "Too many args",
+						hcl->id, conn_id(&hcl->conn));
 					httpsrv_error(hcl, 400, "Too many args");
 					return (false);
 				}
@@ -510,14 +565,28 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		}
 	}
 
+	/* Get the local + remote IP/port */
+	conn_getinfo(
+		&hcl->conn, true,
+		hcl->headers.local_ip,
+		sizeof hcl->headers.local_ip,
+		&proto, &hcl->headers.local_port);
+
+	conn_getinfo(
+		&hcl->conn, false,
+		hcl->headers.remote_ip,
+		sizeof hcl->headers.remote_ip,
+		&proto, &hcl->headers.remote_port);
+
 	/* Note that this client hit us */
 	logline(log_DEBUG_,
-		CONN_ID "\n"
+		HCL_ID " " CONN_ID "\n"
 		"HTTP: the_request: %s (%u)\n"
 		"HTTP: hostname: %s\n"
 		"HTTP: uri: %s\n"
 		"HTTP: local: %s/%u\n"
 		"HTTP: remote: %s/%u",
+		hcl->id,
 		conn_id(&hcl->conn),
 		hcl->the_request, (unsigned int)strlen(hcl->the_request),
 		hcl->headers.hostname,
@@ -525,21 +594,23 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		hcl->headers.local_ip, hcl->headers.local_port,
 		hcl->headers.remote_ip, hcl->headers.remote_port);
 
-	logline(log_DEBUG_, CONN_ID " Got %u arguments:",
-		conn_id(&hcl->conn),
-		hcl->headers.argc);
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " Got %u arguments:",
+		hcl->id, conn_id(&hcl->conn), hcl->headers.argc);
 
 	for (j = 0; j < hcl->headers.argc; j++) {
 		logline(log_DEBUG_,
-			CONN_ID " Arg %u :: %s = %s",
+			HCL_ID " " CONN_ID " Arg %u :: %s = %s",
+			hcl->id,
 			conn_id(&hcl->conn),
 			j,
 			hcl->headers.argi[j].var,
 			hcl->headers.argi[j].val);
 	}
 
-	logline(log_DEBUG_, CONN_ID " args = %s",
-		conn_id(&hcl->conn), hcl->headers.args);
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " args = %s",
+		hcl->id, conn_id(&hcl->conn), hcl->headers.args);
 
 	return (true);
 }
@@ -585,12 +656,12 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	char			address[256];
 	uint32_t		proto, port;
 
-	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
 	/* Create a cl session */
 	hcl = mcalloc(sizeof *hcl, "httpsrv_client_t");
 	if (hcl == NULL) {
-		logline(log_CRIT_, "alloc failed");
+		logline(log_CRIT_, "[hs%" PRIu64 "] alloc failed", hs->id);
 		return;
 	}
 
@@ -606,21 +677,30 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 
 	/* Initialize the conn to defaults */
 	if (!conn_init(&hcl->conn, NULL)) {
-		logline(log_CRIT_, "Could not init connections");
+		logline(log_CRIT_,
+			HCL_ID " Could not init connections",
+			hcl->id);
+
 		httpsrv_client_close(hcl);
 		return;
 	}
 
 	/* Init the buffers */
 	if (!buf_init(&hcl->the_headers)) {
-		logline(log_CRIT_, "Could not init buf");
+		logline(log_CRIT_,
+			HCL_ID " Could not init buf",
+			hcl->id);
+
 		httpsrv_client_close(hcl);
 		return;
 	}
 
 	/* Accept the socket */
 	if (!conn_accept(&hcl->conn, lconn, hcl)) {
-		logline(log_NOTICE_, "conn_accept()");
+		logline(log_NOTICE_,
+			HCL_ID " conn_accept()",
+			hcl->id);
+
 		httpsrv_client_close(hcl);
 		return;
 	}
@@ -646,31 +726,33 @@ static void
 httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 	int i;
 
-	logline(log_DEBUG_, CONN_ID, conn_id(&hcl->conn));
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID,
+		hcl->id, conn_id(&hcl->conn));
 
 	/* This is a non-blocking socket thus receive a bit */
 	i = conn_recv(conn);
 	if (i == 0) {
 		logline(log_DEBUG_,
-			CONN_ID " nothing more",
-			conn_id(&hcl->conn));
+			HCL_ID " " CONN_ID " nothing more",
+			hcl->id, conn_id(&hcl->conn));
 	} else if (i < 0) {
 		logline(log_DEBUG_,
-			CONN_ID " Remote end closed connection",
-			conn_id(&hcl->conn));
+			HCL_ID " " CONN_ID " Remote end closed connection",
+			hcl->id, conn_id(&hcl->conn));
 		hcl->close = true;
 	} else {
 		if (hcl->busy) {
 			logline(log_DEBUG_,
-				CONN_ID " Busy processing request",
-				conn_id(&hcl->conn));
+				HCL_ID " " CONN_ID " Busy processing request",
+				hcl->id, conn_id(&hcl->conn));
 			return;
 		}
 
 		/* HTTP Connection */
 		logline(log_DEBUG_,
-			CONN_ID " Try to parse some lines",
-			conn_id(&hcl->conn));
+			HCL_ID " " CONN_ID " Try to parse some lines",
+			hcl->id, conn_id(&hcl->conn));
 		httpsrv_handle_http(hcl);
 	}
 }
@@ -681,34 +763,36 @@ httpsrv_poller_thread(void *context) {
 	httpsrv_t	*hs = (httpsrv_t *)context;
 	int		r;
 
-	logline(log_DEBUG_, "[d%" PRIu64 "] - start", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "] - start", hs->id);
 
 	/* Handle the sockets in the global connset by polling them */
 	while (thread_keep_running()) {
-		/* logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id); */
+		/* logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id); */
 		r = connset_poll(&hs->connset);
 		if (r < 0) {
-			logline(log_NOTICE_, "connset_poll() failed %d", r);
+			logline(log_NOTICE_,
+				"[hs%" PRIu64 "] connset_poll() failed %d",
+				hs->id, r);
 			break;
 		}
 	}
 
-	logline(log_DEBUG_, "[d%" PRIu64 "] exiting", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "] exiting", hs->id);
 	return (NULL);
 }
 
 void
 httpsrv_silence(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, "...");
+	logline(log_DEBUG_, HCL_ID, hcl->id);
 	conn_events(&hcl->conn, CONN_POLLNONE);
-	logline(log_DEBUG_, "end");
+	logline(log_DEBUG_, HCL_ID " end", hcl->id);
 }
 
 void
 httpsrv_speak(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, "...");
+	logline(log_DEBUG_, HCL_ID, hcl->id);
 	conn_events(&hcl->conn, CONN_POLLIN | CONN_POLLOUT);
-	logline(log_DEBUG_, "end");
+	logline(log_DEBUG_, HCL_ID " end", hcl->id);
 }
 
 /* These pull items off the active queue */
@@ -718,7 +802,7 @@ httpsrv_worker_thread(void *context) {
 	conn_t			*conn;
 	httpsrv_client_t	*hcl;
 
-	logline(log_DEBUG_, "[d%" PRIu64 "] context", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "] context", hs->id);
 
 	while (thread_keep_running()) {
 
@@ -730,7 +814,9 @@ httpsrv_worker_thread(void *context) {
 			 * stay quiet when shutting down
 			 */
 			if (thread_keep_running()) {
-				logline(log_ERR_, " get_ready() failed...");
+				logline(log_ERR_,
+					"[hs%" PRIu64 "] failed...",
+					hs->id);
 			}
 			break;
 		}
@@ -741,12 +827,14 @@ httpsrv_worker_thread(void *context) {
 
 		if (hcl == NULL) {
 			/* Listen sockets don't have client data */
-			logline(log_DEBUG_, CONN_ID " accept client...",
+			logline(log_DEBUG_,
+				CONN_ID " accept client...",
 				conn_id(conn));
 			httpsrv_accept(conn, hs);
 		} else {
-			logline(log_DEBUG_, CONN_ID " handle client",
-				conn_id(&hcl->conn));
+			logline(log_DEBUG_,
+				HCL_ID " " CONN_ID " handle client",
+				hcl->id, conn_id(&hcl->conn));
 
 			/* Activity! */
 			hcl->lastact = gettime();
@@ -763,8 +851,9 @@ httpsrv_worker_thread(void *context) {
 
 			/* Need to close it? */
 			if (hcl->close) {
-				logline(log_DEBUG_, CONN_ID " closing",
-					conn_id(conn));
+				logline(log_DEBUG_,
+					HCL_ID " " CONN_ID " closing",
+					hcl->id, conn_id(conn));
 				list_remove_l(&hs->sessions, &hcl->node);
 				httpsrv_client_close(hcl);
 				conn = NULL;
@@ -773,8 +862,9 @@ httpsrv_worker_thread(void *context) {
 
 		if (conn != NULL) {
 			/* Processed the event */
-			logline(log_DEBUG_, CONN_ID " processed",
-				conn_id(conn));
+			logline(log_DEBUG_,
+				HCL_ID " " CONN_ID " processed",
+				hcl->id, conn_id(conn));
 			connset_handled_ready(conn);
 		}
 	}
@@ -791,11 +881,11 @@ httpsrv_exit(httpsrv_t *hs) {
 	assert(hs);
 	assert(hs->id != 0);
 
-	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
 	/* Cleanup all open sessions */
 	while ((hcl = (httpsrv_client_t *)list_pop(&hs->sessions))) {
-		logline(log_DEBUG_, "closing [d%" PRIu64 "]" CONN_ID,
+		logline(log_DEBUG_, "closing [hs%" PRIu64 "]" CONN_ID,
 			hs->id, conn_id(&hcl->conn));
 		httpsrv_client_close(hcl);
 	}
@@ -827,7 +917,7 @@ httpsrv_init(	httpsrv_t *hs,
 
 	/* New Id */
 	hs->id = ++httpsrv_id;
-	logline(log_DEBUG_, "[d%" PRIu64 "]", hs->id);
+	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
 	/* Initialize the transaction & sessions list */
 	list_init(&hs->sessions);
