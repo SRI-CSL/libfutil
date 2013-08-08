@@ -69,7 +69,7 @@ typedef struct {
 	httpsrv_f		accept;		/* Accept function - called when connection is accepted */
 	httpsrv_line_f		header;		/* Header function - called for every header */
 	httpsrv_f		handle;		/* Handle function - called when request is complete */
-	httpsrv_f		bodyfwddone;	/* BodyFWDdone     - called when BodyFwd is complete */
+	httpsrv_f		bodyfwd_done;	/* BodyFWDdone     - called when BodyFwd is complete */
 	httpsrv_f		done;		/* Done function   - called when request is done */
 	httpsrv_f		close;		/* Close function  - called when closing connection */
 } httpsrv_t;
@@ -105,7 +105,7 @@ bool httpsrv_init(httpsrv_t *hs, void *user,
 			httpsrv_f accept,
 			httpsrv_line_f header,
 			httpsrv_f handle,
-			httpsrv_f bodyfwddone,
+			httpsrv_f bodyfwd_done,
 			httpsrv_f done,
 			httpsrv_f close);
 bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned int numworkers);
@@ -120,6 +120,7 @@ void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
 bool httpsrv_parse_request(httpsrv_client_t *hcl);
 void httpsrv_silence(httpsrv_client_t *hcl);
 void httpsrv_speak(httpsrv_client_t *hcl);
+void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 
 #endif /* HTTPSRV_H */
 

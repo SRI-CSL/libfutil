@@ -125,6 +125,14 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			assert(len <= hcl->bodyfwdlen);
 			hcl->bodyfwdlen -= len;
 
+			/*
+			 * Allow partial body content reads
+			 * if that happens at _done() time we
+			 * read in the remainder that is this
+			 */
+			assert(len <= hcl->headers.content_length);
+			hcl->headers.content_length -= len;
+
 			/* Done or something went wrong? */
 			if (hcl->bodyfwdlen == 0 || len == 0) {
 				logline(log_DEBUG_,
@@ -132,8 +140,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->id, conn_id(&hcl->conn));
 
 				/* Inform the caller */
-				assert(hcl->hs->bodyfwddone);
-				hcl->hs->bodyfwddone(hcl, hcl->user);
+				assert(hcl->hs->bodyfwd_done);
+				hcl->hs->bodyfwd_done(hcl, hcl->user);
 
 				/* Done with this */
 				hcl->bodyfwd = NULL;
@@ -211,7 +219,28 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 		/* There should be something in this buffer */
 		i = conn_recvline(&hcl->conn, line, sizeof line);
-		if (i == 0) {
+		if (i == -EINVAL) {
+			httpsrv_error(hcl, 400,
+				      "ASCII NUL character found in stream");
+
+			logline(log_ERR_,
+				HCL_ID " ASCII NULL found, closing",
+				hcl->id);
+
+			/* Close it up */
+			hcl->close = true;
+			return;
+
+		} else if (i < 0) {
+			logline(log_ERR_,
+				HCL_ID " Receive line problem (%d), closing",
+				hcl->id, i);
+
+			/* Close it up */
+			hcl->close = true;
+			return;
+
+		} else if (i == 0) {
 			logline(log_DEBUG_,
 				HCL_ID " " CONN_ID " No new line yet",
 				hcl->id,
@@ -225,24 +254,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					 len);
 			}
 
-			/* Try to get more lines */
-			i = conn_recv(&hcl->conn);
-			if (i == 0)
-				return;
-
-			/* Try again to get the line */
-			if (i > 0)
-				continue;
-
-			/* Drop through to failure below */
-		}
-
-		if (i < 0) {
-			logline(log_DEBUG_,
-				HCL_ID " Receive line problem, closing",
-				hcl->id);
-			/* Remote end closed socket */
-			hcl->close = true;
+			/* Nothing left */
 			return;
 		}
 
@@ -289,7 +301,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					   "%" PRIu64, &t64) == 1) {
 					hcl->headers.content_length = t64;
 				} else {
-					logline(log_DEBUG_,
+					logline(log_WARNING_,
 						HCL_ID
 						" POST without Content-Length",
 						hcl->id);
@@ -382,8 +394,11 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 void
 httpsrv_done(httpsrv_client_t *hcl) {
 	logline(log_DEBUG_,
-		HCL_ID " " CONN_ID " is done",
-		hcl->id, conn_id(&hcl->conn));
+		HCL_ID " " CONN_ID " is done (%s)",
+		hcl->id, conn_id(&hcl->conn),
+		httpsrv_methodname(hcl->method));
+
+	/* XXX suck up remainder POST content_length */
 
 	/* Call the client's done function */
 	if (hcl->hs->done)
@@ -436,6 +451,8 @@ httpsrv_done(httpsrv_client_t *hcl) {
 			HCL_ID " " CONN_ID " has nothing queued",
 			hcl->id, conn_id(&hcl->conn));
 	}
+
+	logline(log_DEBUG_, "end");
 }
 
 bool
@@ -612,6 +629,11 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		HCL_ID " " CONN_ID " args = %s",
 		hcl->id, conn_id(&hcl->conn), hcl->headers.args);
 
+	if (strlen(hcl->headers.hostname) == 0) {
+		httpsrv_error(hcl, 400, "Bad Request - missing or empty Host header");
+		return (false);
+	}
+
 	return (true);
 }
 
@@ -738,8 +760,8 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 			hcl->id, conn_id(&hcl->conn));
 	} else if (i < 0) {
 		logline(log_DEBUG_,
-			HCL_ID " " CONN_ID " Remote end closed connection",
-			hcl->id, conn_id(&hcl->conn));
+			HCL_ID " " CONN_ID " Remote closed connection (%d)",
+			hcl->id, conn_id(&hcl->conn), i);
 		hcl->close = true;
 	} else {
 		if (hcl->busy) {
@@ -793,6 +815,21 @@ httpsrv_speak(httpsrv_client_t *hcl) {
 	logline(log_DEBUG_, HCL_ID, hcl->id);
 	conn_events(&hcl->conn, CONN_POLLIN | CONN_POLLOUT);
 	logline(log_DEBUG_, HCL_ID " end", hcl->id);
+}
+
+void
+httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
+	logline(log_DEBUG_, HCL_ID " to " HCL_ID, hin->id, hout->id);
+
+	/* Make sure there is content to forward */
+	assert(hin->headers.content_length != 0);
+
+	/* Make it forward the body from hin to hout */
+	hin->bodyfwd = hout;
+	hin->bodyfwdlen = hin->headers.content_length;
+
+	/* Directly suck the existing buffer empty */
+	httpsrv_handle_http(hin);
 }
 
 /* These pull items off the active queue */
@@ -863,8 +900,8 @@ httpsrv_worker_thread(void *context) {
 		if (conn != NULL) {
 			/* Processed the event */
 			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID " processed",
-				hcl->id, conn_id(conn));
+				CONN_ID " processed",
+				conn_id(conn));
 			connset_handled_ready(conn);
 		}
 	}
@@ -905,7 +942,7 @@ httpsrv_init(	httpsrv_t *hs,
 		httpsrv_f f_accept,
 		httpsrv_line_f f_header,
 		httpsrv_f f_handle,
-		httpsrv_f f_bodyfwddone,
+		httpsrv_f f_bodyfwd_done,
 		httpsrv_f f_done,
 		httpsrv_f f_close)
 {
@@ -926,13 +963,13 @@ httpsrv_init(	httpsrv_t *hs,
 	connset_init(&hs->connset);
 
 	/* User provided options and callbacks */
-	hs->user	= user;
-	hs->accept	= f_accept;
-	hs->header	= f_header;
-	hs->handle	= f_handle;
-	hs->bodyfwddone = f_bodyfwddone;
-	hs->done	= f_done;
-	hs->close	= f_close;
+	hs->user		= user;
+	hs->accept		= f_accept;
+	hs->header		= f_header;
+	hs->handle		= f_handle;
+	hs->bodyfwd_done	= f_bodyfwd_done;
+	hs->done		= f_done;
+	hs->close		= f_close;
 
 	return (true);
 }
