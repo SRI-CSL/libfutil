@@ -3,6 +3,14 @@
 
 #include "misc.h"
 
+#ifdef _DARWIN
+#define THREAD_IDn "tr %" PRIx64 ""
+#else
+#define THREAD_IDn "tr %" PRIu64 ""
+#endif
+
+#define THREAD_ID "[" THREAD_IDn "]"
+
 enum thread_states {
 	thread_state_dying = 0,
 	thread_state_running,
