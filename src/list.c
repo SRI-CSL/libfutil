@@ -36,7 +36,7 @@ bool
 list_isempty(hlist_t *l) {
 	bool e;
 
-	assert(l);
+	fassert(l);
 	if (!l)
 		return (true);
 
@@ -91,7 +91,7 @@ node_destroy(hnode_t *n) {
 /* List is locked by caller */
 void
 list_remove(hlist_t *l, hnode_t *n) {
-	assert(l->locks == 1);
+	fassert(l->locks == 1);
 
 	LD3(LIST_ID ", %p, %" PRIu64, list_id(l), (void *)n, l->items);
 
@@ -99,14 +99,14 @@ list_remove(hlist_t *l, hnode_t *n) {
 	if (n->prev == NULL)
 		return;
 
-	assert(n->next);
+	fassert(n->next);
 
 	n->prev->next = n->next;
 	n->next->prev = n->prev;
 	n->next	= NULL;
 	n->prev	= NULL;
 
-	assert(l->items > 0);
+	fassert(l->items > 0);
 	l->items--;
 
 #ifndef _WIN32
@@ -116,7 +116,7 @@ list_remove(hlist_t *l, hnode_t *n) {
 	/* XXX: Use Windows Events for broadcasting signals */
 #endif
 
-	assert(l->locks == 1);
+	fassert(l->locks == 1);
 }
 
 void
@@ -211,7 +211,7 @@ list_getnext(hlist_t *l) {
 
 		/* Some kind of trouble thus get out */
 		logline(log_ERR_, "cond_timedwait returned %d", rc);
-		assert(false);
+		fassert(false);
 #else
 		/* XXX: Add support for conditional breaking (win32) */
 		Sleep(5000);
@@ -234,11 +234,11 @@ list_addtail(hlist_t *l, hnode_t *n) {
 
 	LD3(LIST_ID ", %p, %" PRIu64, list_id(l), (void *)n, l->items);
 
-	assert(n != NULL);
-	assert(l != NULL);
+	fassert(n != NULL);
+	fassert(l != NULL);
 
-	assert(n->next == NULL);
-	assert(n->prev == NULL);
+	fassert(n->next == NULL);
+	fassert(n->prev == NULL);
 
 	o = l->tailprev;
 	n->next = o->next;
@@ -265,14 +265,14 @@ void
 list_lock(hlist_t *l) {
 	mutex_lock(l->mutex);
 	LDV(LIST_ID, list_id(l));
-	assert(l->locks == 0);
+	fassert(l->locks == 0);
 	l->locks++;
 }
 
 void
 list_unlock(hlist_t *l) {
 	LDV(LIST_ID, list_id(l));
-	assert(l->locks == 1);
+	fassert(l->locks == 1);
 	l->locks--;
 	mutex_unlock(l->mutex);
 }

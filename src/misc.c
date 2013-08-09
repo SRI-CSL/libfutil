@@ -118,13 +118,8 @@ logitVA(unsigned int level, const char UNUSED *file,
 			"%" PRIu64 " "
 #endif
 			"%-5s "
-			"[tr "
-#ifdef _DARWIN
-			"%" PRIx64
-#else
-			"%" PRIu64
-#endif
-			"] %s() ",
+			THREAD_ID
+			" %s() ",
 #ifdef SAFDEF_LOG_LONG
 			teem.tm_year+1900, teem.tm_mon+1, teem.tm_mday,
 			teem.tm_hour, teem.tm_min, teem.tm_sec,
@@ -212,7 +207,7 @@ logline(unsigned int level, const char *file, unsigned int line, const char *cal
 		va_end(ap);
 
 		/* Crash and Burn */
-		assert(false);
+		fassert(false);
 	}
 }
 
@@ -402,7 +397,7 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 	timeout->tv_sec = now.tv_sec + msec / 1000;
 	timeout->tv_nsec = (now.tv_usec * 1000) + (msec % 1000) * 1000000;
 #endif
-	assert(timeout->tv_nsec >= 0);
+	fassert(timeout->tv_nsec >= 0);
 
 	while (timeout->tv_nsec > 1000000000) {
 		timeout->tv_sec++;
@@ -448,7 +443,7 @@ bool misc_map(const char *str, const misc_map_t *map, char *data) {
 			/* During debugging we want to catch this */
 			logline(log_DEBUG_, "Won't fit! %u vs %u\n",
 				len, map[i].len);
-			assert(false);
+			fassert(false);
 			l = map[i].len;
 		}
 
@@ -502,7 +497,7 @@ getpriolevel(const char *name) {
 	}
 
 	/* Should not happen */
-	assert(false);
+	fassert(false);
 	return (0);
 }
 
@@ -532,7 +527,7 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	fclose(f);
 
 	/* Just in case */
-	assert(n == size);
+	fassert(n == size);
 #else
 	HCRYPTPROV	hProvider = 0;
 

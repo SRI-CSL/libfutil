@@ -1,7 +1,7 @@
 #include <libfutil/misc.h>
 
 void rwl_init(rwl_t *l) {
-	assert(l);
+	fassert(l);
 	memzero(l, sizeof *l);
 	mutex_init(l->mutex);
 	mutex_init(l->mutexW);
@@ -10,16 +10,16 @@ void rwl_init(rwl_t *l) {
 }
 
 void rwl_destroy(rwl_t *l) {
-	assert(l);
-	assert(l->readers == 0);
-	assert(l->writers == 0);
+	fassert(l);
+	fassert(l->readers == 0);
+	fassert(l->writers == 0);
 
 	mutex_destroy(l->mutex);
 	mutex_destroy(l->mutexW);
 }
 
 void rwl_lockR(rwl_t *l) {
-	assert(l);
+	fassert(l);
 
 	mutex_lock(l->mutex);
 
@@ -40,8 +40,8 @@ void rwl_lockR(rwl_t *l) {
 }
 
 void rwl_unlockR(rwl_t *l) {
-	assert(l);
-	assert(l->readers > 0);
+	fassert(l);
+	fassert(l->readers > 0);
 
 	/* One less reader */
 	mutex_lock(l->mutex);
@@ -54,7 +54,7 @@ void rwl_unlockR(rwl_t *l) {
 void rwl_lockW(rwl_t *l) {
 	bool		w = false;
 
-	assert(l);
+	fassert(l);
 
 	mutex_lock(l->mutex);
 
@@ -95,8 +95,8 @@ void rwl_lockW(rwl_t *l) {
 }
 
 void rwl_unlockW(rwl_t *l) {
-	assert(l);
-	assert(l->writers > 0);
+	fassert(l);
+	fassert(l->writers > 0);
 
 	/* Acquire the readers/writers lock */
 	mutex_lock(l->mutex);

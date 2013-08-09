@@ -68,7 +68,7 @@ conn_set_nonblocking(conn_t *conn) {
 	u_long flags;
 #endif
 
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 
 #if defined(O_NONBLOCK) && defined(F_SETFL) && defined(F_GETFL)
 	if (-1 == (flags = fcntl(conn->sock, F_GETFL, 0))) flags = 0;
@@ -100,7 +100,7 @@ conn_set_blocking(conn_t *conn) {
 
 bool
 conn_is_state(conn_t *conn, connstate_t st) {
-	assert(conn);
+	fassert(conn);
 
 	if (conn->state == st)
 		return (true);
@@ -145,8 +145,8 @@ conn_ssl_psk_server_cb(SSL *ssl, const char *identity,
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
 	/* Required to be there */
-	assert(conn->ssl_psk_id != NULL);
-	assert(conn->ssl_psk_key != NULL);
+	fassert(conn->ssl_psk_id != NULL);
+	fassert(conn->ssl_psk_key != NULL);
 
 	if (!identity) {
 		logline(log_NOTICE_, CONN_ID " client did not send PSK identity",
@@ -746,7 +746,7 @@ conn_init(conn_t *conn, void *clientdata)
         signal(SIGPIPE, SIG_IGN);
 #endif
 
-	assert(conn != NULL);
+	fassert(conn != NULL);
 
 	/* Empty it out */
 	memzero(conn, sizeof *conn);
@@ -918,7 +918,7 @@ connset_destroy(connset_t *cs) {
 	} while (i > 0);
 
 	/* Should always be empty */
-	assert(connset_is_empty(cs));
+	fassert(connset_is_empty(cs));
 
 	list_destroy(&cs->ready);
 	list_destroy(&cs->active);
@@ -976,7 +976,7 @@ connset_poll(connset_t *cs) {
 				strerror_r(errsv, buf, sizeof buf);
 				logline(log_ERR_, "Select Failed: %d : %s",
 					errsv, buf);
-				assert(false);
+				fassert(false);
 			}
 
 			return (-1);
@@ -1103,7 +1103,7 @@ connset_handled_ready(conn_t *conn) {
 	logline(log_DEBUG_, "...");
 
 	/* Should come from get_ready/get_one_ready() */
-	assert(conn->connset_l != NULL);
+	fassert(conn->connset_l != NULL);
 
 	/* Set the bits correctly so that select() answers again */
 	connset_lock(conn->connset);
@@ -1236,7 +1236,7 @@ conn_is_eof(conn_t *conn) {
 /* What do we want to hear? (Mutex locked by caller) */
 void
 conn_eventsA(conn_t *conn, uint16_t events) {
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 
 	/*
 	 * We allow sockets to work without a connset
@@ -1357,7 +1357,7 @@ static bool
 conn_ssl_flush(conn_t *conn) {
 	ssize_t r;
 
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
@@ -1382,7 +1382,7 @@ conn_ssl_flush(conn_t *conn) {
 		 */
 		uint64_t left;
 
-		assert(r < conn->ssl_out_len);
+		fassert(r < conn->ssl_out_len);
 		left = conn->ssl_out_len - r;
 
 		logline(log_DEBUG_,
@@ -1576,7 +1576,7 @@ conn_recvA(conn_t *conn) {
 	uint64_t	len;
 	ssize_t		r;
 
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
 #ifdef CONN_SSL
@@ -1762,7 +1762,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 			logline(log_DEBUG_,
 				CONN_ID " blocked",
 				conn_id(conn));
-			assert(false);
+			fassert(false);
 			break;
 		} else if (i < 0) {
 			/* Connection got closed etc */
@@ -1923,7 +1923,7 @@ conn_flush(conn_t *conn) {
 		unsigned int	iolen;
 
 		/* Add separating when we didn't yet \n */
-		assert((buf_cur(&conn->send) +
+		fassert((buf_cur(&conn->send) +
 			buf_cur(&conn->send_headers)) != 0);
 
 		if (conn->add_contentlen &&
@@ -2003,7 +2003,7 @@ conn_flush(conn_t *conn) {
 			r = conn_ssl_send(conn, buf_buffer(&conn->send), &wlen);
 		} else {
 #endif
-			assert(conn_is_valid(conn));
+			fassert(conn_is_valid(conn));
 			thread_setstate(thread_state_io_write);
 			r = send(conn->sock, buf_buffer(&conn->send), wlen,
 				 MSG_NOSIGNAL);
@@ -2171,7 +2171,7 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 	bool		ret;
 	uint64_t	cur;
 
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 
 	conn_lock(conn);
 
@@ -2227,7 +2227,7 @@ conn_create_listen(connset_t *connset,
 	const char		*errfunc;
 
 	/* Require a conlset */
-	assert(connset != NULL);
+	fassert(connset != NULL);
 
 	type = (protocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM);
 	snprintf(service, sizeof service, "%u", port);
@@ -2380,9 +2380,9 @@ conn_create_connection(conn_t *conn, const char *hostname,
 	unsigned int		type;
 	int			n;
 
-	assert(conn);
-	assert(hostname != NULL);
-	assert(port != 0);
+	fassert(conn);
+	fassert(hostname != NULL);
+	fassert(port != 0);
 
 	snprintf(service, sizeof service, "%u", port);
 
@@ -2512,11 +2512,11 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 	char		address[256];
 	uint32_t	protocol, port;
 
-	assert(conn);
-	assert(conn->sock == INVALID_SOCKET);
+	fassert(conn);
+	fassert(conn->sock == INVALID_SOCKET);
 
-	assert(lconn);
-	assert(lconn->sock != INVALID_SOCKET);
+	fassert(lconn);
+	fassert(lconn->sock != INVALID_SOCKET);
 
 	/* Setup the context */
 	conn_lock(lconn);
@@ -2588,7 +2588,7 @@ conn_getinfo(conn_t *conn, bool local, char *hostname, unsigned int hlen,
 	int			sslen = sizeof ss;
 #endif
 
-	assert(conn_is_valid(conn));
+	fassert(conn_is_valid(conn));
 
 	memzero(hostname, hlen);
 	*proto = 0;

@@ -293,6 +293,7 @@ const char *inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt);
 #include "list.h"
 #include "thread.h"
 #include "rwl.h"
+#include "stack.h"
 
 uint64_t gettime(void);
 

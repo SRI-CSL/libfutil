@@ -54,7 +54,7 @@ buf_shift(buf_t *buf, unsigned int length) {
 	mutex_lock(buf->mutex);
 
 	/* Should never try to shift out more than what is left */
-	assert(length <= buf->offset);
+	fassert(length <= buf->offset);
 
 	/* All of it? Then we are quickly done */
 	if (length == buf->offset) {
@@ -73,7 +73,7 @@ buf_shift(buf_t *buf, unsigned int length) {
 
 void
 buf_added(buf_t *buf, unsigned int length) {
-	assert((buf->offset + length) < buf->size);
+	fassert((buf->offset + length) < buf->size);
 	buf->offset += length;
 }
 
@@ -96,7 +96,7 @@ bool buf_willfit(buf_t *buf, unsigned int len) {
 	if (ns > (100 * 1024 * 1024)) {
 		logline(log_ERR_,
 			"Wanted more than 100 MiB (%" PRIu64 ")", ns);
-		assert(false);
+		fassert(false);
 		return (false);
 	}
 
@@ -104,7 +104,7 @@ bool buf_willfit(buf_t *buf, unsigned int len) {
 	b = realloc(buf->buf, ns);
 	if (!b) {
 		logline(log_ERR_, "Out of memory (%" PRIu64 ")", ns);
-		assert(false);
+		fassert(false);
 		return (false);
 	}
 
@@ -182,7 +182,7 @@ buf_vprintf(buf_t *buf, const char *fmt, va_list ap) {
 			"Could not add more, buffer too full "
 			"(%u > %" PRIu64 " + %" PRIu64 ")",
 			len, left, buf->offset);
-		assert(false);
+		fassert(false);
 
 		ret = false;
 		break;

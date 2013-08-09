@@ -121,7 +121,7 @@ thread_remove(mythread_t *t);
 void
 thread_remove(mythread_t *t) {
 
-	assert(t);
+	fassert(t);
 
 	logline(log_DEBUG_, "Thread %s started", t->description);
 
@@ -209,7 +209,7 @@ thread_sleep(unsigned int msec) {
 			rc);
 	}
 #endif
-	assert(rc != EINVAL);
+	fassert(rc != EINVAL);
 
 	return (rc == ETIMEDOUT ? true : false);
 }
@@ -338,7 +338,7 @@ thread_stopall(bool force) {
 	logline(log_DEBUG_, "Signalling thread that they should exit");
 
 	/* Must be initialized */
-	assert(g_threads != NULL);
+	fassert(g_threads != NULL);
 
 	/* Set the stop running flag so threads get a hint */
 	thread_stop_running();
@@ -423,7 +423,7 @@ void
 thread_exit(void) {
 	logline(log_DEBUG_, "...");
 
-	assert(g_threads != NULL);
+	fassert(g_threads != NULL);
 
 	/* Stop all running threads */
 	thread_stopall(true);
@@ -431,7 +431,7 @@ thread_exit(void) {
 	/* Not inititalized anymore */
 	g_threads_initialized = false;
 
-	assert(list_isempty(g_threads));
+	fassert(list_isempty(g_threads));
 
 	list_destroy(g_threads);
 	mfree(g_threads, sizeof *g_threads, "g_threads");

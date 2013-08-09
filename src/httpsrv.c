@@ -38,7 +38,7 @@ struct http_method http_methods[] = {
 const char *
 httpsrv_methodname(unsigned int method) {
 	/* To make sure that at least the list size is synced */
-	assert(HTTP_M_MAX == lengthof(http_methods));
+	fassert(HTTP_M_MAX == lengthof(http_methods));
 
 	if (method >= lengthof(http_methods)) {
 		logline(log_CRIT_, "Unknown HTTP method '%u'", method);
@@ -127,7 +127,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			}
 
 			/* Some bits less */
-			assert(len <= hcl->bodyfwdlen);
+			fassert(len <= hcl->bodyfwdlen);
 			hcl->bodyfwdlen -= len;
 
 			/*
@@ -135,7 +135,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			 * if that happens at _done() time we
 			 * read in the remainder that is this
 			 */
-			assert(len <= hcl->headers.content_length);
+			fassert(len <= hcl->headers.content_length);
 			hcl->headers.content_length -= len;
 
 			/* Done or something went wrong? */
@@ -148,7 +148,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				httpsrv_speak(hcl->bodyfwd);
 
 				/* Inform the caller */
-				assert(hcl->hs->bodyfwd_done);
+				fassert(hcl->hs->bodyfwd_done);
 				hcl->hs->bodyfwd_done(hcl, hcl->user);
 
 				/* Done with this */
@@ -208,7 +208,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			/* Complete? Call handle function */
 			if (hcl->readbodylen == 0) {
 				/* Process it */
-				assert(hcl->hs->handle);
+				fassert(hcl->hs->handle);
 
 				logline(log_DEBUG_,
 					HCL_ID " handling body",
@@ -226,7 +226,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					continue;
 			}
 
-			assert(len != 0);
+			fassert(len != 0);
 
 			continue;
 		}
@@ -330,7 +330,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			hcl->reqid++;
 
 			/* Process it */
-			assert(hcl->hs->handle);
+			fassert(hcl->hs->handle);
 
 			logline(log_DEBUG_,
 				HCL_ID " handling",
@@ -491,7 +491,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		HCL_ID " " CONN_ID " scanning: %s",
 		hcl->id, conn_id(&hcl->conn), line);
 
-	assert(sizeof hcl->headers.argsplit == sizeof hcl->headers.args);
+	fassert(sizeof hcl->headers.argsplit == sizeof hcl->headers.args);
 
 	/* Nothing found yet */
 	hcl->headers.argc = 0;
@@ -509,7 +509,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		ao < (sizeof hcl->headers.args - 1);
 		j++) {
 
-		assert(hcl->headers.argc < lengthof(hcl->headers.argi));
+		fassert(hcl->headers.argc < lengthof(hcl->headers.argi));
 
 		c = line[j];
 
@@ -839,7 +839,7 @@ httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
 	logline(log_DEBUG_, HCL_ID " to " HCL_ID, hin->id, hout->id);
 
 	/* Make sure there is content to forward */
-	assert(hin->headers.content_length != 0);
+	fassert(hin->headers.content_length != 0);
 
 	/* Make it forward the body from hin to hout */
 	hin->bodyfwd = hout;
@@ -935,8 +935,8 @@ void
 httpsrv_exit(httpsrv_t *hs) {
 	httpsrv_client_t *hcl;
 
-	assert(hs);
-	assert(hs->id != 0);
+	fassert(hs);
+	fassert(hs->id != 0);
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
