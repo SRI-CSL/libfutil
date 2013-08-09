@@ -982,11 +982,14 @@ futil_daemonize(const char *pidfile) {
 	return (1);
 }
 
-#define DUMPPACKET_PERLINE 16
+#define DUMPPACKET_PERLINE	16
+#define DUMPPACKET_LINES	8
+#define DUMPPACKET_MAX		(DUMPPACKET_PERLINE * DUMPPACKET_LINES)
 void
 dumppacket(int level, const uint8_t *packet, uint64_t len) {
 	unsigned int	i, j, k;
 	uint8_t		c;
+	uint64_t	plen = len;
 
 	/* Silently ignore as we have nowhere to log
 	 * Users debugging and needing these details will notice
@@ -1004,12 +1007,11 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 	mutex_lock(l_mutex);
 
 	/* Limit the length? */
-	if (len > 2000) {
-		fprintf(l_log_output, "Only showing first 200 of %" PRIu64 "\n", len);
-		len = 200;
+	if (plen > DUMPPACKET_MAX) {
+		plen = DUMPPACKET_MAX;
 	}
 
-	for (i = 0; i < len; i++) {
+	for (i = 0; i < plen; i++) {
 		/* Show the position? */
 		if (i % DUMPPACKET_PERLINE == 0) {
 			fprintf(l_log_output, "%08x ", i);
@@ -1020,7 +1022,7 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 
 		/* Show the ASCII portion at the end? */
 		j = i % DUMPPACKET_PERLINE;
-		if (j == (DUMPPACKET_PERLINE - 1) || i == (len - 1)) {
+		if (j == (DUMPPACKET_PERLINE - 1) || i == (plen - 1)) {
 			/* Add spaces for bytes that we do not show */
 			for (k = j; k < DUMPPACKET_PERLINE-1; k++) {
 				fprintf(l_log_output, "   ");
@@ -1042,6 +1044,12 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 			/* Finish the line */
 			fprintf(l_log_output, "\n");
 		}
+	}
+
+	if (plen != len) {
+		fprintf(l_log_output,
+			"-------- Only showed first %" PRIu64 " of %" PRIu64 "\n",
+			plen, len);
 	}
 
 	mutex_unlock(l_mutex);
