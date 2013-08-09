@@ -58,12 +58,13 @@ buf_shift(buf_t *buf, unsigned int length) {
 
 	/* All of it? Then we are quickly done */
 	if (length == buf->offset) {
-		buf->offset = 0;
 		memzero(buf->buf, buf->offset);
+		buf->offset = 0;
 	} else {
 		unsigned int left = buf->offset - length;
 
 		memmove(buf->buf, &buf->buf[length], left);
+		memzero(&buf->buf[left], buf->size - left);
 
 		buf->offset = left;
 		buf->buf[left] = '\0';
