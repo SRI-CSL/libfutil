@@ -496,8 +496,11 @@ getpriolevel(const char *name) {
 			return (priority_names[i].c_level);
 	}
 
-	/* Should not happen */
-	fassert(false);
+	/* Not found */
+	logline(log_CRIT_,
+		"Priority level '%s' does not exist",
+		name);
+
 	return (0);
 }
 
