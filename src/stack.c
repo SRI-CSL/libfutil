@@ -111,7 +111,4 @@ format_stacktrace(char UNUSED *buf, unsigned int UNUSED length,
 void
 output_stacktrace(void) {
 }
-
-#else
-#error "STACK DUMPS"
 #endif /* NOSTACKDUMPS */
