@@ -1866,7 +1866,7 @@ conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
 bool
 conn_flush(conn_t *conn) {
 	ssize_t		r;
-	uint64_t	len, wlen;
+	uint64_t	len, len_b, len_h, wlen;
 
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
@@ -1882,7 +1882,9 @@ conn_flush(conn_t *conn) {
 	}
 #endif /* CONN_SSL */
 
-	len = buf_cur(&conn->send) + buf_cur(&conn->send_headers);
+	len_b = buf_cur(&conn->send);
+	len_h = buf_cur(&conn->send_headers);
+	len = len_b + len_h;
 
 	if (!conn_is_connected(conn) || conn_is_eofA(conn)) {
 		logline(log_DEBUG_, CONN_ID " not connected", conn_id(conn));
@@ -1903,39 +1905,38 @@ conn_flush(conn_t *conn) {
 
 	/* Call the flush hook */
 	if (conn->flush_hook) {
-		if (buf_cur(&conn->send_headers) > 0) {
+		if (len_h > 0) {
 			conn->flush_hook(conn->flush_data,
 					 conn_id(conn), true,
 					 buf_buffer(&conn->send_headers),
-					 buf_cur(&conn->send_headers));
+					 len_h);
 		}
 
-		if (buf_cur(&conn->send) > 0) {
+		if (len_b > 0) {
 			conn->flush_hook(conn->flush_data,
 					 conn_id(conn), false,
 					 buf_buffer(&conn->send),
-					 buf_cur(&conn->send));
+					 len_b);
 		}
 	}
 
-	if (buf_cur(&conn->send_headers) > 0) {
+	if (len_h > 0) {
 		struct iovec	iovec[2];
 		unsigned int	iolen;
 
 		/* Add separating when we didn't yet \n */
-		fassert((buf_cur(&conn->send) +
-			buf_cur(&conn->send_headers)) != 0);
+		fassert((len_b + len_h) != 0);
 
 		if (conn->add_contentlen &&
-		    (conn->real_contentlen > 0 || buf_cur(&conn->send) > 0)) {
+		    (conn->real_contentlen > 0 || len_b > 0)) {
 			logline(log_DEBUG_,
 				CONN_ID " Outputting Content-Length: %" PRIu64,
-				conn_id(conn), buf_cur(&conn->send));
+				conn_id(conn), len_b);
 
 #ifdef NETWORK_DETAILS
 			conn_addheaderf(conn,
 				"CONN-Content-CONN-Length: %" PRIu64,
-				buf_cur(&conn->send));
+				len_b));
 #endif
 
 			if (conn->real_contentlen != 0) {
@@ -1948,7 +1949,7 @@ conn_flush(conn_t *conn) {
 				"Content-Length: %" PRIu64,
 				conn->real_contentlen > 0 ?
 					conn->real_contentlen :
-					buf_cur(&conn->send));
+					len_b);
 
 			/* Reset it to avoid re-use */
 			conn->real_contentlen = 0;
@@ -1961,7 +1962,7 @@ conn_flush(conn_t *conn) {
 			CONN_ID " "
 			"Full HEADERs (%" PRIu64 " vs %" PRIsizet ")",
 			conn_id(conn),
-			buf_cur(&conn->send_headers),
+			len_h,
 			strlen(buf_buffer(&conn->send_headers)));
 		logline(log_DEBUG_, "8<-----------");
 		logline(log_DEBUG_, "%s", buf_buffer(&conn->send_headers));
@@ -1969,9 +1970,9 @@ conn_flush(conn_t *conn) {
 
 		/* The chunks to send */
 		iovec[0].iov_base = buf_buffer(&conn->send_headers);
-		iovec[0].iov_len = buf_cur(&conn->send_headers);
+		iovec[0].iov_len = len_h;
 		iovec[1].iov_base = buf_buffer(&conn->send);
-		iovec[1].iov_len = buf_cur(&conn->send);
+		iovec[1].iov_len = len_b;
 
 		/* Total length */
 		len = iovec[0].iov_len + iovec[1].iov_len;
@@ -1995,7 +1996,7 @@ conn_flush(conn_t *conn) {
 		}
 #endif
 	} else {
-		wlen = buf_cur(&conn->send);
+		wlen = len_b;
 		logline(log_DEBUG_, CONN_ID " Flushing %" PRIu64, conn_id(conn), len);
 
 #ifdef CONN_SSL
@@ -2036,10 +2037,10 @@ conn_flush(conn_t *conn) {
 			conn_id(conn), wlen, len);
 
 		/* Headers will go first */
-		if (buf_cur(&conn->send_headers) > 0) {
-			if (wlen > buf_cur(&conn->send_headers)) {
+		if (len_h > 0) {
+			if (wlen >= len_h) {
 				/* Done with the headers */
-				wlen -= buf_cur(&conn->send);
+				wlen -= len_h;
 				buf_empty(&conn->send_headers);
 			} else {
 				/* Move rest to the front of the buffer */
@@ -2050,6 +2051,7 @@ conn_flush(conn_t *conn) {
 
 		/* Bytes left from the normal buffer? */
 		if (wlen > 0) {
+			assert(wlen < len_b);
 			/* Move the rest to the front of the buffer */
 			buf_shift(&conn->send, wlen);
 		}
