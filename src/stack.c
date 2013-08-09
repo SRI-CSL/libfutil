@@ -1,7 +1,12 @@
-#if defined(DEBUG)
 #include <libfutil/misc.h>
+#define NOSTACKDUMPS 1
+
+#if defined(DEBUG_STACKDUMPS)
 
 #if defined(_LINUX) || defined(_DARWIN)
+
+#undef NOSTACKDUMPS
+
 #include <execinfo.h>
 
 void
@@ -65,21 +70,32 @@ output_stacktrace(void) {
 	void		*trace[16];
 	char		buf[4096];
 	uint64_t	trace_size = lengthof(trace);
+	uint64_t	tid = getthisthreadid();
 
 	dump_stacktrace(trace, &trace_size, 1);
 	format_stacktrace(buf, sizeof(buf), trace, trace_size);
 
 	fprintf(stderr,
-		"8<---------------------- stack:\n"
+		THREAD_ID " 8<---------------------- stack:\n"
 		"%s"
-		"-------------------->8\n",
-		buf);
+		THREAD_ID "-------------------->8\n",
+		tid, buf, tid);
 
 	fflush(stderr);
 }
 
 #else /* _LINUX || _DARWIN */
 
+/* Non Linux/DARWIN platforms */
+
+#endif /* _LINUX || _DARWIN */
+
+/* When there are no stack dumps (DEBUG_STACKDUMPS not set) */
+
+#endif /* DEBUG_STACKDUMPS */
+
+
+#ifdef NOSTACKDUMPS
 void
 dump_stacktrace(void UNUSED **trace, uint64_t UNUSED *trace_size,
 		unsigned int UNUSED skip)
@@ -96,6 +112,6 @@ void
 output_stacktrace(void) {
 }
 
-#endif /* _LINUX || _DARWIN */
-#endif
-
+#else
+#error "STACK DUMPS"
+#endif /* NOSTACKDUMPS */
