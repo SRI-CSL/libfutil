@@ -122,6 +122,7 @@ bool conn_flush(conn_t *conn);
 void conn_set_flush_hook(conn_t *conn, conn_flush_hook hook, void *data);
 void conn_unset_flush_hook(conn_t *conn);
 
+bool conn_addheaders(conn_t *conn, const char *txt);
 bool conn_addheader(conn_t *conn, const char *txt);
 bool conn_addheadervf(conn_t *conn, const char *fmt, va_list ap)
 	ATTR_FORMAT(printf, 2, 0);

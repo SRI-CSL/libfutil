@@ -85,7 +85,7 @@ static void
 httpsrv_error(httpsrv_client_t *hcl, unsigned int ecode, const char *msg);
 static void
 httpsrv_error(httpsrv_client_t *hcl, unsigned int ecode, const char *msg) {
-	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s\r\n", ecode, msg);
+	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s", ecode, msg);
 }
 
 static void

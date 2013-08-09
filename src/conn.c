@@ -1934,7 +1934,7 @@ conn_flush(conn_t *conn) {
 
 #ifdef NETWORK_DETAILS
 			conn_addheaderf(conn,
-				"CONN-Content-CONN-Length: %" PRIu64 "\r\n",
+				"CONN-Content-CONN-Length: %" PRIu64,
 				buf_cur(&conn->send));
 #endif
 
@@ -1945,7 +1945,7 @@ conn_flush(conn_t *conn) {
 			}
 
 			conn_addheaderf(conn,
-				"Content-Length: %" PRIu64 "\r\n",
+				"Content-Length: %" PRIu64,
 				conn->real_contentlen > 0 ?
 					conn->real_contentlen :
 					buf_cur(&conn->send));
@@ -1955,7 +1955,7 @@ conn_flush(conn_t *conn) {
 		}
 
 		/* Separate header from body */
-		conn_addheader(conn, "\r\n");
+		conn_addheader(conn, "");
 
 		logline(log_DEBUG_,
 			CONN_ID " "
@@ -1965,7 +1965,7 @@ conn_flush(conn_t *conn) {
 			strlen(buf_buffer(&conn->send_headers)));
 		logline(log_DEBUG_, "8<-----------");
 		logline(log_DEBUG_, "%s", buf_buffer(&conn->send_headers));
-		logline(log_DEBUG_, "----------->8\n");
+		logline(log_DEBUG_, "----------->8");
 
 		/* The chunks to send */
 		iovec[0].iov_base = buf_buffer(&conn->send_headers);
@@ -2068,8 +2068,20 @@ conn_flush(conn_t *conn) {
 /* Not locking mutex as buf handles that */
 /* Callers might have locked the conn mutex */
 bool
-conn_addheader(conn_t *conn, const char *txt) {
+conn_addheaders(conn_t *conn, const char *txt) {
 	return (buf_put(&conn->send_headers, txt));
+}
+
+/* Not locking mutex as buf handles that */
+/* Callers might have locked the conn mutex */
+bool
+conn_addheader(conn_t *conn, const char *txt) {
+	bool ret;
+
+	ret = buf_put(&conn->send_headers, txt);
+	if (ret) ret = buf_put(&conn->send_headers, "\r\n");
+
+	return (ret);
 }
 
 /* Not locking mutex as buf handles that */
@@ -2088,6 +2100,8 @@ conn_addheaderf(conn_t *conn, const char *fmt, ...) {
 	logline(log_DEBUG, __func__, CONN_ID " (len=%" PRIu64 ") %s",
 		conn_id(conn), buf_cur(&conn->send_headers) - cur,
 		&buf_buffer(&conn->send_headers)[cur]);
+
+	if (ret) ret = buf_put(&conn->send_headers, "\r\n");
 
 	va_end(ap);
 
