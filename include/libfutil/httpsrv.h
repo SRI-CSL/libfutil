@@ -110,6 +110,7 @@ struct httpsrv_client {
 	char			*readbody;	/* POST body destination */
 	uint64_t		readbodylen;	/* How much of the body to read */
 	uint64_t		readbodyoff;	/* How much already read */
+	uint64_t		readbodysiz;	/* How large the buffer really is */
 };
 
 #define HCL_IDn "%" PRIu64
@@ -135,6 +136,9 @@ bool httpsrv_parse_request(httpsrv_client_t *hcl);
 void httpsrv_silence(httpsrv_client_t *hcl);
 void httpsrv_speak(httpsrv_client_t *hcl);
 void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
+
+int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
+void httpsrv_readbody_free(httpsrv_client_t *hcl);
 
 #endif /* HTTPSRV_H */
 

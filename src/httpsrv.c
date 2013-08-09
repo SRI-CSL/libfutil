@@ -179,7 +179,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				continue;
 			}
 
-			/* Only read the body even if there is more */
+			/* Only read upto the max even if there is more */
 			if (len > hcl->readbodylen) {
 				len = hcl->readbodylen;
 			}
@@ -416,6 +416,9 @@ httpsrv_done(httpsrv_client_t *hcl) {
 		httpsrv_methodname(hcl->method));
 
 	/* XXX suck up remainder POST content_length */
+
+	/* Clean up read body */
+	httpsrv_readbody_free(hcl);
 
 	/* Call the client's done function */
 	if (hcl->hs->done)
@@ -931,6 +934,71 @@ httpsrv_worker_thread(void *context) {
 	return (NULL);
 }
 
+int
+httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max) {
+	uint64_t size = hcl->headers.content_length;
+
+	/* Should never try to read a 0 length body */
+	assert(size != 0);
+
+	/* If no maximum given, default to 5 MiB */
+	if (max == 0) {
+		max = 5*1024*1024;
+	}
+
+	if (size < min) {
+		httpsrv_error(hcl, 500, "POST body too puny");
+		return (-ENOSPC);
+	}
+
+	if (size > max) {
+		httpsrv_error(hcl, 500, "POST body too big");
+		return (-EFBIG);
+	}
+
+	/*
+	 * Add an extra byte for an ASCII NUL char so that we can
+	 * treat the whole thing as a string if needed
+	 */
+	size += 1;
+
+	logline(log_DEBUG_,
+		"Allocating %" PRIu64 " bytes for the body",
+		hcl->headers.content_length);
+
+	/* Let the HTTP engine read the body in here */
+	hcl->readbody = mcalloc(size, "HTTPBODY");
+	if (hcl->readbody == NULL) {
+		httpsrv_error(hcl, 500, "Out of Memory");
+		return (-ENOMEM);
+	}
+
+	/* Actual length of the body that we want to read */
+	hcl->readbodylen = hcl->headers.content_length;
+	hcl->readbodyoff = 0;
+
+	/* Buffer Length */
+	hcl->readbodysiz = size;
+
+	return (0);
+}
+
+void
+httpsrv_readbody_free(httpsrv_client_t *hcl) {
+	logline(log_DEBUG_,
+		HCL_ID " readbody = %p",
+		hcl->id, (void *)hcl->readbody);
+
+	if (hcl->readbody) {
+		mfree(hcl->readbody, hcl->readbodysiz, "HTTPBODY");
+
+		hcl->readbody = NULL;
+		hcl->readbodylen = 0;
+		hcl->readbodyoff = 0;
+		hcl->readbodysiz = 0;
+	}
+}
+
 void
 httpsrv_exit(httpsrv_t *hs) {
 	httpsrv_client_t *hcl;
@@ -1020,4 +1088,3 @@ httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned i
 
 	return (true);
 }
-
