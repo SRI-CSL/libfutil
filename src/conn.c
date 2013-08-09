@@ -1958,7 +1958,9 @@ conn_flush(conn_t *conn) {
 		conn_addheader(conn, "\r\n");
 
 		logline(log_DEBUG_,
+			CONN_ID " "
 			"Full HEADERs (%" PRIu64 " vs %" PRIsizet ")",
+			conn_id(conn),
 			buf_cur(&conn->send_headers),
 			strlen(buf_buffer(&conn->send_headers)));
 		logline(log_DEBUG_, "8<-----------");
