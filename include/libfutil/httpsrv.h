@@ -56,6 +56,7 @@ typedef struct {
 
 typedef struct httpsrv_client httpsrv_client_t;
 typedef void (*httpsrv_f)(httpsrv_client_t *cl, void *user);
+typedef bool (*httpsrv_done_f)(httpsrv_client_t *cl, void *user);
 typedef void (*httpsrv_line_f)(httpsrv_client_t *cl, void *user, char *line);
 
 /* All private */
@@ -65,13 +66,26 @@ typedef struct {
 	hlist_t			sessions;	/* Sessions */
 
 	/* Caller functions (callbacks) */
-	void			*user;		/* User data */
-	httpsrv_f		accept;		/* Accept function - called when connection is accepted */
-	httpsrv_line_f		header;		/* Header function - called for every header */
-	httpsrv_f		handle;		/* Handle function - called when request is complete */
-	httpsrv_f		bodyfwd_done;	/* BodyFWDdone     - called when BodyFwd is complete */
-	httpsrv_f		done;		/* Done function   - called when request is done */
-	httpsrv_f		close;		/* Close function  - called when closing connection */
+	/* User data */
+	void			*user;
+
+	/* Accept function - called when connection is accepted */
+	httpsrv_f		accept;
+
+	/* Header function - called for every header */
+	httpsrv_line_f		header;
+
+	/* Handle function - called when request is complete */
+	httpsrv_done_f		handle;
+
+	/* BodyFWDdone     - called when BodyFwd is complete */
+	httpsrv_f		bodyfwd_done;
+
+	/* Done function   - called when request is done */
+	httpsrv_f		done;
+
+	/* Close function  - called when closing connection */
+	httpsrv_f		close;
 } httpsrv_t;
 
 /* Per-connection/session from mod_dgw or listeners */
@@ -104,7 +118,7 @@ struct httpsrv_client {
 bool httpsrv_init(httpsrv_t *hs, void *user,
 			httpsrv_f accept,
 			httpsrv_line_f header,
-			httpsrv_f handle,
+			httpsrv_done_f handle,
 			httpsrv_f bodyfwd_done,
 			httpsrv_f done,
 			httpsrv_f close);

@@ -23,7 +23,7 @@ misc_map_t httpsrv_headers[] = {
 /* XXX: order alpha and then bisect search */
 /* Keep in sync with above list */
 struct http_method http_methods[] = {
-	{ "",		0 },
+	{ "<none>",	0 },
 	{ "GET",	3 },
 	{ "HEAD",	4 },
 	{ "POST",	4 },
@@ -95,6 +95,11 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	unsigned int	l, m;
 	uint32_t	t32;
 	uint64_t	t64, len;
+	bool		done;
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID,
+		hcl->id, conn_id(&hcl->conn));
 
 	/* As long as we got lines parse them */
 	while (true) {
@@ -139,6 +144,9 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					HCL_ID " " CONN_ID " BodyFwd Done",
 					hcl->id, conn_id(&hcl->conn));
 
+				/* Do events again */
+				httpsrv_speak(hcl->bodyfwd);
+
 				/* Inform the caller */
 				assert(hcl->hs->bodyfwd_done);
 				hcl->hs->bodyfwd_done(hcl, hcl->user);
@@ -147,11 +155,12 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				hcl->bodyfwd = NULL;
 				hcl->bodyfwdlen = 0;
 
-				/* Request is done */
-				httpsrv_done(hcl);
+				/* Done with this for now */
+				return;
 			}
 
-			/* Done with this for now */
+			/* Try once more */
+			continue;
 		}
 
 		/* Read in the buffer? */
@@ -205,11 +214,16 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					HCL_ID " handling body",
 					hcl->id);
 
-				hcl->hs->handle(hcl, hcl->user);
+				done = hcl->hs->handle(hcl, hcl->user);
 
 				logline(log_DEBUG_,
 					HCL_ID " handling body complete",
 					hcl->id);
+
+				if (done)
+					return;
+				else
+					continue;
 			}
 
 			assert(len != 0);
@@ -322,14 +336,17 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				HCL_ID " handling",
 				hcl->id);
 
-			hcl->hs->handle(hcl, hcl->user);
+			done = hcl->hs->handle(hcl, hcl->user);
 
 			logline(log_DEBUG_,
 				HCL_ID " handling complete",
 				hcl->id);
 
 			/* Next */
-			continue;
+			if (done)
+				return;
+			else
+				continue;
 		}
 
 		/* Remove trailing \n */
@@ -341,7 +358,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 		/* No method yet? */
 		if (hcl->method == HTTP_M_NONE) {
-			for (m = 0; m < lengthof(http_methods); m++) {
+			for (m = 1; m < lengthof(http_methods); m++) {
 				if (strncasecmp(line, http_methods[m].name,
 						http_methods[m].len) != 0 ||
 				    line[http_methods[m].len] != ' ') {
@@ -828,6 +845,9 @@ httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
 	hin->bodyfwd = hout;
 	hin->bodyfwdlen = hin->headers.content_length;
 
+	/* Silence the output */
+	httpsrv_silence(hout);
+
 	/* Directly suck the existing buffer empty */
 	httpsrv_handle_http(hin);
 }
@@ -941,7 +961,7 @@ httpsrv_init(	httpsrv_t *hs,
 		void *user,
 		httpsrv_f f_accept,
 		httpsrv_line_f f_header,
-		httpsrv_f f_handle,
+		httpsrv_done_f f_handle,
 		httpsrv_f f_bodyfwd_done,
 		httpsrv_f f_done,
 		httpsrv_f f_close)
