@@ -134,6 +134,8 @@ bool httpsrv_init(httpsrv_t *hs, void *user,
 bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned int numworkers);
 void httpsrv_exit(httpsrv_t *hs);
 
+httpsrv_client_t *httpsrv_newcl(httpsrv_t *hs);
+
 void httpsrv_done(httpsrv_client_t *hcl);
 void httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a);
 
@@ -147,6 +149,8 @@ void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 
 int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
 void httpsrv_readbody_free(httpsrv_client_t *hcl);
+
+void httpsrv_sessions(httpsrv_client_t *hcl);
 
 #endif /* HTTPSRV_H */
 

@@ -702,15 +702,11 @@ httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a) {
 	}
 }
 
-/* Accept incoming client connections */
-static void
-httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
+httpsrv_client_t *
+httpsrv_newcl(httpsrv_t *hs) {
 	/* Unique number, for easy debugging */
 	static uint64_t		cl_id = 0;
-
 	httpsrv_client_t	*hcl;
-	char			address[256];
-	uint32_t		proto, port;
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
@@ -718,7 +714,7 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	hcl = mcalloc(sizeof *hcl, "httpsrv_client_t");
 	if (hcl == NULL) {
 		logline(log_CRIT_, "[hs%" PRIu64 "] alloc failed", hs->id);
-		return;
+		return (NULL);
 	}
 
 	/* Identity */
@@ -734,11 +730,11 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	/* Initialize the conn to defaults */
 	if (!conn_init(&hcl->conn, NULL)) {
 		logline(log_CRIT_,
-			HCL_ID " Could not init connections",
+			HCL_ID " Could not init connection",
 			hcl->id);
 
 		httpsrv_client_close(hcl);
-		return;
+		return (NULL);
 	}
 
 	/* Init the buffers */
@@ -748,8 +744,22 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 			hcl->id);
 
 		httpsrv_client_close(hcl);
-		return;
+		return (NULL);
 	}
+
+	return (hcl);
+}
+
+/* Accept incoming client connections */
+static void
+httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
+	httpsrv_client_t	*hcl;
+	char			address[256];
+	uint32_t		proto, port;
+
+	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
+
+	hcl = httpsrv_newcl(hs);
 
 	/* Accept the socket */
 	if (!conn_accept(&hcl->conn, lconn, hcl)) {
@@ -1012,6 +1022,60 @@ httpsrv_readbody_free(httpsrv_client_t *hcl) {
 		hcl->readbodylen = 0;
 		hcl->readbodyoff = 0;
 		hcl->readbodysiz = 0;
+	}
+}
+
+void
+httpsrv_sessions(httpsrv_client_t *hcl) {
+	httpsrv_client_t *h, *hn;
+	unsigned int	cnt = 0;
+
+	list_lock(&hcl->hs->sessions);
+	list_for(&hcl->hs->sessions, h, hn, httpsrv_client_t *) {
+		if (cnt == 0) {
+			conn_put(&hcl->conn,
+				"<table>\n"
+				"<tr>\n"
+				"<th>ID</th>\n"
+				"<th>ReqID</th>\n"
+				"<th>Local_IP</th>\n"
+				"<th>Local_Port</th>\n"
+				"<th>Remote_IP</th>\n"
+				"<th>Remote_Port</th>\n"
+				"<th>Hostname</th>\n"
+				"<th>Request</th>\n"
+				"</tr>\n");
+		}
+
+		conn_printf(&hcl->conn,
+			    "<tr>"
+			    "<td>%" PRIu64 "</td>"
+			    "<td>%" PRIu64 "</td>"
+			    "<td>%s</td>"
+			    "<td>%u</td>"
+			    "<td>%s</td>"
+			    "<td>%u</td>"
+			    "<td>%s</td>"
+			    "<td>%s</td>"
+			    "<tr>\n",
+			    h->id,
+			    h->reqid,
+			    h->headers.local_ip,
+			    h->headers.local_port,
+			    h->headers.remote_ip,
+			    h->headers.remote_port,
+			    h->headers.hostname,
+			    h->the_request);
+		cnt++;
+	}
+	list_unlock(&hcl->hs->sessions);
+
+	if (cnt == 0) {
+		conn_put(&hcl->conn,
+			"No active sessions");
+	} else {
+		conn_put(&hcl->conn,
+			"</table>\n");
 	}
 }
 
