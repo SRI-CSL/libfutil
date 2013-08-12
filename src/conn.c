@@ -1608,10 +1608,11 @@ conn_recvA(conn_t *conn) {
 		logline(log_DEBUG_,
 			CONN_ID " EOF (len=%" PRIsizet ")",
 			conn_id(conn), r);
-		return (-1);	/* Remote end closed socket */
+		/* Remote end closed socket */
+		return (-ECONNRESET);
 	}
 
-	if (r <= -1) {
+	if (r < 0) {
 		if (errno == EAGAIN) {
 			logline(log_DEBUG_,
 				CONN_ID " EAGAIN (len=%" PRIsizet ")",
@@ -1622,7 +1623,7 @@ conn_recvA(conn_t *conn) {
 		logline(log_DEBUG_,
 			CONN_ID " ERR (len=%" PRIsizet ")",
 			conn_id(conn), r);
-		return (-1);
+		return (-errno);
 	}
 
 	conn->last_recv = gettime();
@@ -1958,6 +1959,10 @@ conn_flush(conn_t *conn) {
 		/* Separate header from body */
 		conn_addheader(conn, "");
 
+		/* We added some headers, thus this became larger */
+		len_h = buf_cur(&conn->send_headers);
+		len = len_b + len_h;
+
 		logline(log_DEBUG_,
 			CONN_ID " "
 			"Full HEADERs (%" PRIu64 " vs %" PRIsizet ")",
@@ -1973,9 +1978,6 @@ conn_flush(conn_t *conn) {
 		iovec[0].iov_len = len_h;
 		iovec[1].iov_base = buf_buffer(&conn->send);
 		iovec[1].iov_len = len_b;
-
-		/* Total length */
-		len = iovec[0].iov_len + iovec[1].iov_len;
 
 		/* Sometimes we do not have content thus we skip that one */
 		iolen = iovec[1].iov_len > 0 ? 2 : 1;
