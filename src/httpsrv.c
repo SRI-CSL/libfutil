@@ -82,10 +82,24 @@ httpsrv_client_close(httpsrv_client_t *hcl) {
 }
 
 static void
-httpsrv_error(httpsrv_client_t *hcl, unsigned int ecode, const char *msg);
+httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg);
 static void
-httpsrv_error(httpsrv_client_t *hcl, unsigned int ecode, const char *msg) {
-	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s", ecode, msg);
+httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
+	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s", code, msg);
+
+	if (hcl->hs->top)
+		hcl->hs->top(hcl, hcl->user);
+
+	conn_printf(
+		&hcl->conn,
+		"<h1>Error %u</h1>\n"
+		"<p>\n"
+		"%s."
+		"</p>\n",
+		code, msg);
+
+	if (hcl->hs->tail)
+		hcl->hs->tail(hcl, hcl->user);
 }
 
 static void
@@ -374,7 +388,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					HCL_ID " Unknown HTTP: %s",
 					hcl->id, line);
 
-				httpsrv_error(hcl, 400, "Unknown HTTP method");
+				httpsrv_error(hcl, 501, "Not Implemented");
 				hcl->close = true;
 				return;
 			}
@@ -384,7 +398,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					HCL_ID " Request Too Big: %s",
 					hcl->id, line);
 
-				httpsrv_error(hcl, 400, "Request Too Big"); /* XXX: correct HTTP code */
+				httpsrv_error(hcl, 414, "Request-URI Too Long");
 				hcl->close = true;
 				return;
 			}
@@ -1029,6 +1043,8 @@ httpsrv_exit(httpsrv_t *hs) {
 bool
 httpsrv_init(	httpsrv_t *hs,
 		void *user,
+		httpsrv_f f_top,
+		httpsrv_f f_tail,
 		httpsrv_f f_accept,
 		httpsrv_line_f f_header,
 		httpsrv_done_f f_handle,
@@ -1054,6 +1070,9 @@ httpsrv_init(	httpsrv_t *hs,
 
 	/* User provided options and callbacks */
 	hs->user		= user;
+
+	hs->top			= f_top;
+	hs->tail		= f_tail;
 	hs->accept		= f_accept;
 	hs->header		= f_header;
 	hs->handle		= f_handle;

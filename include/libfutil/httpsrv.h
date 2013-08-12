@@ -69,6 +69,12 @@ typedef struct {
 	/* User data */
 	void			*user;
 
+	/* HTML Top function - called to generate the top of a HTML page */
+	httpsrv_f		top;
+
+	/* HTML Top function - called to generate the tail of a HTML page */
+	httpsrv_f		tail;
+
 	/* Accept function - called when connection is accepted */
 	httpsrv_f		accept;
 
@@ -117,6 +123,8 @@ struct httpsrv_client {
 #define HCL_ID "[hcl" HCL_IDn "]"
 
 bool httpsrv_init(httpsrv_t *hs, void *user,
+			httpsrv_f top,
+			httpsrv_f tail,
 			httpsrv_f accept,
 			httpsrv_line_f header,
 			httpsrv_done_f handle,
