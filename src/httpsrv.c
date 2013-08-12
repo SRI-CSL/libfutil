@@ -839,7 +839,9 @@ httpsrv_speak(httpsrv_client_t *hcl) {
 
 void
 httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
-	logline(log_DEBUG_, HCL_ID " to " HCL_ID, hin->id, hout->id);
+	logline(log_DEBUG_,
+		HCL_ID " to " HCL_ID " %" PRIu64 " bytes",
+		hin->id, hout->id, hin->headers.content_length);
 
 	/* Make sure there is content to forward */
 	fassert(hin->headers.content_length != 0);
