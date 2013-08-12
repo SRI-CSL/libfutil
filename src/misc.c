@@ -466,10 +466,13 @@ static const struct {
 	const char	*c_name;
 	int		c_level;
 } priority_names[] = {
+	{ "emergency",	LOG_EMERG },
 	{ "emerg",	LOG_EMERG },
 	{ "alert",	LOG_ALERT },
 	{ "crit",	LOG_CRIT },
 	{ "err",	LOG_ERR },
+	{ "error",	LOG_ERR },
+	{ "warn",	LOG_WARNING },
 	{ "warning",	LOG_WARNING },
 	{ "notice",	LOG_NOTICE },
 	{ "info",	LOG_INFO },
