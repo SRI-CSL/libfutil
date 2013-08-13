@@ -17,8 +17,8 @@ enum thread_states {
 	thread_state_sleeping,
 	thread_state_io_read,
 	thread_state_io_write,
-	thread_state_io_wait,
-	thread_state_io_next
+	thread_state_select,
+	thread_state_list_next
 };
 
 typedef uint64_t thread_status_t;

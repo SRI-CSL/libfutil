@@ -949,7 +949,7 @@ connset_poll(connset_t *cs) {
 		timeout.tv_sec = 0;
 		timeout.tv_usec = (100 * 1000);
 
-		thread_setstate(thread_state_io_wait);
+		thread_setstate(thread_state_select);
 		errno = 0;
 		i = select(cs->hifd + 1, &fd_r, &fd_w, NULL, &timeout);
  		errsv = errno;
@@ -1072,9 +1072,7 @@ conn_t *
 connset_get_ready(connset_t *cs) {
 	conn_t *conn;
 
-	thread_setstate(thread_state_io_next);
 	conn = (conn_t *)list_getnext(&cs->ready);
-	thread_setstate(thread_state_running);
 	if (conn != NULL) {
 		connset_set_inactive(cs, conn);
 	}

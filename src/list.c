@@ -164,6 +164,8 @@ list_getnext(hlist_t *l) {
 
 	LD2(LIST_ID " %" PRIu64, list_id(l), l->items);
 
+	thread_setstate(thread_state_list_next);
+
 	/* Lock her up */
 	list_lock(l);
 
@@ -175,6 +177,7 @@ list_getnext(hlist_t *l) {
 		node = list_pop_l(l);
 		if (node) {
 			list_unlock(l);
+			thread_setstate(thread_state_running);
 			return (node);
 		}
 
@@ -222,6 +225,7 @@ list_getnext(hlist_t *l) {
 	list_unlock(l);
 
 	LD2("exit " LIST_ID " = %p", list_id(l), (void *)node);
+	thread_setstate(thread_state_running);
 
 	return (node);
 }

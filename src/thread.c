@@ -15,8 +15,8 @@ const char *ts_names[20] = {
 	"sleeping",
 	"io_read",
 	"io_write",
-	"io_wait",
-	"io_next"
+	"select",
+	"list_next"
 };
 
 static void
