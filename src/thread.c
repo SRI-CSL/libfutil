@@ -154,6 +154,24 @@ thread_setstate(thread_status_t state) {
 	return (true);
 }
 
+bool
+thread_setmessage(const char *fmt, ...) {
+	mythread_t *t;
+	va_list ap;
+
+	t = thread_getthis();
+	if (!t)
+		return (false);
+
+	va_start(ap, fmt);
+	vsnprintf(t->message, sizeof t->message, fmt, ap);
+	va_end(ap);
+
+	thread_unlock(t);
+
+	return (true);
+}
+
 void
 thread_serve(void) {
 	mythread_t *t;
@@ -459,10 +477,14 @@ thread_list(thread_list_f cb, void *cbdata) {
 		/* Callback which might actually show the details */
 		/* (lets hope it does not create any threads or so ;) */
 		cb(cbdata,
-		   t->thread_num, st, now - t->starttime,
+		   t->thread_num,
+		   t->thread_id,
+		   st,
+		   now - t->starttime,
 		   t->description,
 		   t->thread_id == thread_id,
 		   ts_names[t->state],
+		   t->message,
 		   t->served);
 
 		/* Another thread */

@@ -35,6 +35,7 @@ typedef struct {
 	cond_t		cond;		/* Condition variable */
 	bool		cancelable;	/* Cancel this thread at exit? */
 	uint64_t	served;		/* Requests served */
+	char		message[128];	/* Short 'status' message */
 
         /* The routine we are going to call with its argument */
 	void		*(*start_routine)(void *);
@@ -48,18 +49,21 @@ void thread_stopall(bool force);
 bool thread_add(const char *description, void *(*start_routine)(void *),
 		void *arg);
 bool thread_setstate(thread_status_t state);
+bool thread_setmessage(const char* fmt, ...) ATTR_FORMAT(printf, 1, 2);
 bool thread_sleep(unsigned int msec);
 mythread_t *thread_getthis(void);
 
 void thread_serve(void);
 
 typedef void (*thread_list_f)(void		*cbdata,
+			      uint64_t		tnum,
 			      uint64_t		tid,
 			      const char	*starttime,
 			      uint64_t		runningsecs,
 			      const char	*description,
 			      bool		thisthread,
 			      const char	*state,
+			      const char	*message,
 			      uint64_t		served);
 
 unsigned int thread_list(thread_list_f cb, void *cbdata);
