@@ -424,6 +424,11 @@ bool misc_map(const char *str, const misc_map_t *map, char *data) {
 	/* Length of this header */
 	l = s - str;
 
+	/* Empty header? */
+	if ((l+2) >= len) {
+		return (false);
+	}
+
 	/* Length of the value */
 	len -= (l+2);
 
