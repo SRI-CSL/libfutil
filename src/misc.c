@@ -387,8 +387,7 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 	/* get current time */
 	memzero(timeout, sizeof *timeout);
 	clock_gettime(CLOCK_REALTIME, timeout);
-	timeout->tv_nsec += msec / 1000;
-	timeout->tv_nsec += (msec % 1000) * 1000000;
+	timeout->tv_nsec += msec * (1000 * 1000);
 #else
 	struct timeval now;
 
