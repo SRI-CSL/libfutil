@@ -477,12 +477,12 @@ static const struct {
 	{ "warning",	LOG_WARNING },
 	{ "notice",	LOG_NOTICE },
 	{ "info",	LOG_INFO },
-	{ "debug",	LOG_DEBUG }
+	{ "debug",	LOG_DEBUG },
 
 	/* Aliases (lookup only) */
 	{ "emergency",	LOG_EMERG },
 	{ "err",	LOG_ERR },
-	{ "warn",	LOG_WARNING },
+	{ "warn",	LOG_WARNING }
 };
 
 const char *
