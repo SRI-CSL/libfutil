@@ -110,13 +110,16 @@ struct httpsrv_client {
 	bool			close;		/* Close it? */
 	bool			busy;		/* Busy with a request? */
 	void			*user;		/* User data */
+
 	httpsrv_client_t	*bodyfwd;	/* Forward the body? */
-	uint64_t		bodyfwdlen;	/* Length still to forward */
+	uint64_t		bodyfwd_len;	/* Length still to forward */
 
 	char			*readbody;	/* POST body destination */
-	uint64_t		readbodylen;	/* How much of the body to read */
-	uint64_t		readbodyoff;	/* How much already read */
-	uint64_t		readbodysiz;	/* How large the buffer really is */
+	uint64_t		readbody_len;	/* How much of the body to read */
+	uint64_t		readbody_off;	/* How much already read */
+	uint64_t		readbody_siz;	/* How large the buffer really is */
+
+	uint64_t		skipbody_len;	/* Skip this many bytes */
 };
 
 #define HCL_IDn "%" PRIu64
