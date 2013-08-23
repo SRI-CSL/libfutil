@@ -3,6 +3,11 @@
 /* XXX: conn_id + connset_id are not mutex'ed thus could race in theory */
 
 /*
+ * Debug polling mechanism - enables extra checks and assert()s
+ #define POLLDEBUG
+*/
+
+/*
  * For the keyfile.pem + server.pem use:
  *
  *	openssl req -newkey rsa:1024 -x509 -nodes -keyout keyfile.pem \
@@ -782,7 +787,6 @@ conn_init(conn_t *conn, void *clientdata)
 void
 conn_set_connset(conn_t *conn, connset_t *cs) {
 	uint16_t events = conn->wntevents;
-	bool	first = false;
 
 	/* 
 	 * With a connset it is a non-blocking socket
@@ -796,17 +800,9 @@ conn_set_connset(conn_t *conn, connset_t *cs) {
 	/* Remove from old connset */
 	if (conn->connset != NULL)
 		conn_eventsA(conn, 0);
-	else
-		first = true;
 
 	/* Add to new connset */
 	if (cs != NULL) {
-		if (first) {
-			/* First time add, thus put it on a list */
-			logline(log_DEBUG_, "first time");
-			list_addtail_l(&cs->inactive, &conn->node);
-		}
-
 		conn_eventsA(conn, events);
 	}
 
@@ -931,18 +927,36 @@ connset_poll(connset_t *cs) {
 	struct timeval	timeout;
 	conn_t		*conn, *conn_next;
 	fd_set		fd_r, fd_w;
-	int		i, errsv;
+	int		i, errsv, hifd;
+#ifdef POLLDEBUG
+	int		j;
+#endif
 
 	while (true) {
 		/* logline(log_DEBUG_, "..."); */
+		connset_lock(cs);
 
 		/* What we want to check */
+		hifd = cs->hifd + 1;
 		memcpy(&fd_r, &cs->fd_read, sizeof fd_r);
 		memcpy(&fd_w, &cs->fd_write, sizeof fd_w);
 
+#ifdef POLLDEBUG
+		logline(log_DEBUG_, "Pre-select:");
+
+		for (i = 0; i < hifd; i++) {
+			if (FD_ISSET(i, &fd_r))
+				logline(log_DEBUG_, "   read: %u", i);
+			if (FD_ISSET(i, &fd_w))
+				logline(log_DEBUG_, "   write: %u", i);
+		}
+#endif
+
+		connset_unlock(cs);
+
 		/*
 		 * Timeout every 1/10th of a second = 100.000 microseconds
-		 * (1 sec = 1.000.000 usec)
+		 * (1 sec = 1.000.000 usec / microseconds)
 		 * to let the main program check if it needs to abort etc
 		 * note that this also gives the chance to add new FDs
 		 */
@@ -951,11 +965,15 @@ connset_poll(connset_t *cs) {
 
 		thread_setstate(thread_state_select);
 		errno = 0;
-		i = select(cs->hifd + 1, &fd_r, &fd_w, NULL, &timeout);
+		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
  		errsv = errno;
 		thread_setstate(thread_state_running);
 
-		/* logline(log_DEBUG_, "i = %d, errno = %d", i, errsv); */
+#ifdef POLLDEBUG
+		logline(log_DEBUG_,
+			"i = %d/%u, errno = %d",
+			i, hifd, errsv);
+#endif
 
 		if (i < 0) {
 			/* Ignore signals */
@@ -988,29 +1006,62 @@ connset_poll(connset_t *cs) {
 			break;
 		}
 
+#ifdef POLLDEBUG
+		/* How many did we find active? */
+		j = 0;
+#endif
+
 		/* Check clients and move them from active to ready */
 		list_lock(&cs->active);
 		list_for(&cs->active, conn, conn_next, conn_t *) {
-			conn_lock(conn);
+			fassert(cs == conn->connset);
+			connset_lock(conn->connset);
 
-			logline(log_DEBUG_, CONN_ID " checking (i:%s o:%s)",
+			logline(log_DEBUG_, CONN_ID " checking %u, (i:%s/%s o:%s/%s)",
 				conn_id(conn),
+				(unsigned int)conn->sock,
 				yesno(conn_wnt_in(conn)),
-				yesno(conn_wnt_out(conn)));
+				yesno(FD_ISSET(conn->sock, &fd_r)),
+				yesno(conn_wnt_out(conn)),
+				yesno(FD_ISSET(conn->sock, &fd_w)));
 
 			/* No events found for this one yet */
 			conn->hasevents = 0;
 
-			connset_lock(conn->connset);
-			if (FD_ISSET(conn->sock, &fd_r) && conn_wnt_in(conn)) {
-				conn->hasevents |= CONN_POLLIN;
-				logline(log_DEBUG_, CONN_ID " has IN", conn_id(conn));
+			if (FD_ISSET(conn->sock, &fd_r)) {
+				if (conn_wnt_in(conn)) {
+					conn->hasevents |= CONN_POLLIN;
+#ifdef POLLDEBUG
+					j++;
+#endif
+				} else {
+					logline(log_DEBUG_,
+						CONN_ID " have IN signal, "
+						"but did not want",
+						conn_id(conn));
+#ifdef POLLDEBUG
+					fassert(false);
+#endif
+				}
 			}
 
-			if (FD_ISSET(conn->sock, &fd_w) && conn_wnt_out(conn)){
-				conn->hasevents |= CONN_POLLOUT;
-				logline(log_DEBUG_, CONN_ID " has OUT", conn_id(conn));
+			if (FD_ISSET(conn->sock, &fd_w)) {
+				if (conn_wnt_out(conn)) {
+					conn->hasevents |= CONN_POLLOUT;
+#ifdef POLLDEBUG
+					j++;
+#endif
+				} else {
+					logline(log_DEBUG_,
+						CONN_ID " have OUT signal, "
+						"but did not want",
+						conn_id(conn));
+#ifdef POLLDEBUG
+					fassert(false);
+#endif
+				}
 			}
+
 			connset_unlock(conn->connset);
 
 			if (conn->hasevents != 0) {
@@ -1040,10 +1091,22 @@ connset_poll(connset_t *cs) {
 					CONN_ID " Added to ready list",
 					conn_id(conn));
 			}
-
-			conn_unlock(conn);
 		}
 		list_unlock(&cs->active);
+
+#ifdef POLLDEBUG
+		if (i != j) {
+			logline(log_DEBUG_, "Got response for %u/%u socks, but only had %u", i, hifd, j);
+
+			for (i = 0; i < hifd; i++) {
+				if (FD_ISSET(i, &fd_r))
+					logline(log_DEBUG_, "   read: %u", i);
+				if (FD_ISSET(i, &fd_w))
+					logline(log_DEBUG_, "   write: %u", i);
+			}
+			fassert(false);
+		}
+#endif
 	}
 
 	return (0);
@@ -1097,6 +1160,7 @@ connset_handled_ready(conn_t *conn) {
 
 	/* Lock it */
 	conn_lock(conn);
+	connset_lock(conn->connset);
 
 	logline(log_DEBUG_, "...");
 
@@ -1104,8 +1168,6 @@ connset_handled_ready(conn_t *conn) {
 	fassert(conn->connset_l != NULL);
 
 	/* Set the bits correctly so that select() answers again */
-	connset_lock(conn->connset);
-
 	if (conn->wntevents & CONN_POLLIN) {
 		FD_SET(conn->sock, &conn->connset->fd_read);
 	}
@@ -1113,8 +1175,6 @@ connset_handled_ready(conn_t *conn) {
 	if (conn->wntevents & CONN_POLLOUT) {
 		FD_SET(conn->sock, &conn->connset->fd_write);
 	}
-
-	connset_unlock(conn->connset);
 
 	/* Place it back on the active/inactive list */
 	if (conn->wntevents == CONN_POLLNONE) {
@@ -1128,6 +1188,7 @@ connset_handled_ready(conn_t *conn) {
 	logline(log_DEBUG_, "(done)");
 
 	/* Release it */
+	connset_unlock(conn->connset);
 	conn_unlock(conn);
 }
 
@@ -1268,26 +1329,15 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 			FD_CLR(conn->sock, &conn->connset->fd_write);
 	}
 
-	connset_unlock(conn->connset);
+	logline(log_DEBUG_,
+		CONN_ID " (A) wnt=%u, ev=%u",
+		conn_id(conn), conn->wntevents, events);
 
-	logline(log_DEBUG_, CONN_ID " (A)", conn_id(conn));
-
-	/*
-	 * Place currently inactive (wntevents == 0)
-	 * sockets on the active queue (wntevents != 0)
-	 */
-	if (conn->wntevents == 0 && events != 0) {
-		logline(log_DEBUG_, CONN_ID " making active", conn_id(conn));
-
-		/* remove from inactive */
-		list_remove_l(&conn->connset->inactive, &conn->node);
-
-		/* add it to active */
-		list_addtail_l(&conn->connset->active, &conn->node);
-		conn->connset_l = &conn->connset->active;
-
-	} else if (conn->wntevents != 0 && events == 0) {
-		logline(log_DEBUG_, CONN_ID " making inactive", conn_id(conn));
+	/* Place it on the right list */
+	if (conn->wntevents != events) {
+		logline(log_DEBUG_,
+			CONN_ID " making %sactive",
+			conn_id(conn), events == 0 ? "in" : "");
 
 		/* remove from active or ready */
 		if (conn->connset_l) {
@@ -1295,12 +1345,28 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 			conn->connset_l = NULL;
 		}
 
-		/* add it to inactive */
-		list_addtail_l(&conn->connset->inactive, &conn->node);
-		conn->connset_l = &conn->connset->inactive;
+		/* The list it should be on */
+		conn->connset_l = events != 0 ?
+					&conn->connset->active :
+					&conn->connset->inactive,
+
+		/* add it to active */
+		list_addtail_l(conn->connset_l, &conn->node);
+	} else {
+		logline(log_DEBUG_,
+			CONN_ID " remaining on %s (wnt=%u,ev=%u)",
+			conn_id(conn),
+			conn->connset_l == NULL ?
+				"NULL" :
+			conn->connset_l == &conn->connset->active ?
+				"active" :
+			conn->connset_l == &conn->connset->inactive ?
+				"inactive" :
+				"???",
+			conn->wntevents, events);
+
+		/* wntevents == events is handled above as a noop */
 	}
-	/* wntevents == events is handled above as a noop */
-	/* wntevents != 0 && events != 0 would mean stay in the same list */
 
 	logline(log_DEBUG_, CONN_ID " (B)", conn_id(conn));
 
@@ -1339,6 +1405,8 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		/* No events, thus do not check it */
 		logline(log_DEBUG_, CONN_ID " inactive socket", conn_id(conn));
 	}
+
+	connset_unlock(conn->connset);
 }
 
 void
@@ -2342,11 +2410,17 @@ conn_create_listen(connset_t *connset,
 					/* Always non-blocking */
 					conn_set_nonblocking(conn);
 
+					/* Lock it up */
+					conn_lock(conn);
+
 					conn_set_connset(conn, connset);
 					conn_eventsA(conn, CONN_POLLIN);
 
 					/* Mark it as listening */
 					conn_set_state(conn, CONN_LISTENING);
+
+					/* Release it */
+					conn_unlock(conn);
 
 					/* Listening on one */
 					count++;
@@ -2551,8 +2625,8 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 	conn_unlock(lconn);
 
 	if (conn->sock == INVALID_SOCKET) {
-		conn_unlock(conn);
 		logline(log_ERR_, CONN_ID " failed accept", conn_id(conn));
+		conn_unlock(conn);
 		return (false);
 	}
 
