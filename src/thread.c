@@ -368,7 +368,7 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 
 void
 thread_stopall(bool force) {
-	unsigned	int i = 0;
+	unsigned	int i = 0, max = 5;
 	bool		done = false;
 	mythread_t	*t, *tn;
 	os_thread_id	tid = getthisthreadid();
@@ -394,7 +394,7 @@ thread_stopall(bool force) {
 	list_unlock(l_threads);
 
 	/* Make sure that all threads have ended */
-	while (i < 20 && !done) {
+	while (i < max && !done) {
 		done = true;
 
 		/* Sleep a bit if there is something in the list */
@@ -404,6 +404,7 @@ thread_stopall(bool force) {
 				if (t->thread_id == tid)
 					continue;
 
+				thread_lock(t);
 				logline(log_DEBUG_,
 					"Still waiting for [tr%" PRIu64 "] "
 					"%s [%s]%s to finish...",
@@ -412,6 +413,7 @@ thread_stopall(bool force) {
 					ts_names[t->state],
 					t->state != thread_state_running ?
 						" .oO(zzZzzZzzz)" : "");
+				thread_unlock(t);
 
 #ifndef _WIN32
 				pthread_cond_signal(&t->cond);
@@ -423,7 +425,9 @@ thread_stopall(bool force) {
 
 		if (!done) {
 			logline(log_DEBUG_,
-				"Threads Exiting - waiting for some threads");
+				"Threads Exiting - "
+				"waiting for some threads (try %u/%u)",
+				i+1, max);
 			sleep(5);
 		}
 
@@ -432,15 +436,18 @@ thread_stopall(bool force) {
 
 	/* Force cleanup */
 	if (force && !list_isempty(l_threads)) {
+		logline(log_DEBUG_, "Forcing Thread Exit");
 
 		while ((t = (mythread_t *)list_pop(l_threads))) {
 			if (t->thread_id != tid) {
+				thread_lock(t);
 				logline(log_DEBUG_,
 					" Was still running: [tr%" PRIu64 "] "
 					" \"%s\" [%s]",
 					t->thread_num,
 					t->description,
 					ts_names[t->state]);
+				thread_unlock(t);
 			}
 
 			if (t->thread_id != tid) {
@@ -495,6 +502,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 
 		/* Callback which might actually show the details */
 		/* (lets hope it does not create any threads or so ;) */
+		thread_lock(t);
 		cb(cbdata,
 		   t->thread_num,
 		   t->thread_id,
@@ -505,6 +513,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 		   ts_names[t->state],
 		   t->message,
 		   t->served);
+		thread_unlock(t);
 
 		/* Another thread */
 		cnt++;
