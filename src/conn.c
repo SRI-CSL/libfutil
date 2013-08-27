@@ -4,8 +4,8 @@
 
 /*
  * Debug polling mechanism - enables extra checks and assert()s
- #define POLLDEBUG
 */
+#define POLLDEBUG
 
 /*
  * For the keyfile.pem + server.pem use:
@@ -242,11 +242,15 @@ conn_ssl_psk_client_cb(SSL *ssl, const char *hint, char *identity,
 	 */
 	n = snprintf(identity, max_identity_len, "%s", conn->ssl_psk_id);
 	if (!snprintfok(n, max_identity_len)) {
-		logline(log_ERR_, CONN_ID " Could not store identity", conn_id(conn));
+		logline(log_ERR_,
+			CONN_ID " Could not store identity",
+			conn_id(conn));
 		return (0);
 	}
 
-	logline(log_DEBUG_, CONN_ID " identity: \"%s\" (%u)",conn_id(conn),identity,n);
+	logline(log_DEBUG_,
+		CONN_ID " identity: \"%s\" (%u)",
+		conn_id(conn), identity, n);
 
 	n = BN_hex2bn(&bn, conn->ssl_psk_key);
 	if (!n)
@@ -262,7 +266,7 @@ conn_ssl_psk_client_cb(SSL *ssl, const char *hint, char *identity,
 	if ((unsigned int)BN_num_bytes(bn) > max_psk_len)
 	{
 		logline(log_ERR_, CONN_ID " psk buffer of callback is too "
-			" small (%d) for key (%d)",
+			" small (%u) for key (%d)",
 			conn_id(conn), max_psk_len, BN_num_bytes(bn));
 		BN_free(bn);
 		return (0);
@@ -758,7 +762,7 @@ conn_init(conn_t *conn, void *clientdata)
 
 	/* Give it a number we can remember */
 	conn->id = ++conn_id;
-	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	node_init(&conn->node);
 	mutex_init(conn->mutex);
@@ -812,7 +816,7 @@ conn_set_connset(conn_t *conn, connset_t *cs) {
 /* Destroy the connection, final cleanup */
 void
 conn_destroy(conn_t *conn) {
-	logline(log_DEBUG_, "(%p) " CONN_ID, (void *)conn, conn_id(conn));
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	/* Close the socket first if needed */
 	conn_close(conn);
@@ -946,9 +950,9 @@ connset_poll(connset_t *cs) {
 
 		for (i = 0; i < hifd; i++) {
 			if (FD_ISSET(i, &fd_r))
-				logline(log_DEBUG_, "   read: %u", i);
+				logline(log_DEBUG_, "   read: " SOCK_ID, i);
 			if (FD_ISSET(i, &fd_w))
-				logline(log_DEBUG_, "   write: %u", i);
+				logline(log_DEBUG_, "   write: " SOCK_ID, i);
 		}
 #endif
 
@@ -1010,16 +1014,20 @@ connset_poll(connset_t *cs) {
 		/* How many did we find active? */
 		j = 0;
 #endif
+		/* Lock the connset first */
+		connset_lock(cs);
 
 		/* Check clients and move them from active to ready */
 		list_lock(&cs->active);
 		list_for(&cs->active, conn, conn_next, conn_t *) {
+			/* Sanity check */
 			fassert(cs == conn->connset);
-			connset_lock(conn->connset);
 
-			logline(log_DEBUG_, CONN_ID " checking %u, (i:%s/%s o:%s/%s)",
+			logline(log_DEBUG_,
+				CONN_ID " checking " SOCK_ID
+				", (i:%s/%s o:%s/%s)",
 				conn_id(conn),
-				(unsigned int)conn->sock,
+				conn_sock(conn),
 				yesno(conn_wnt_in(conn)),
 				yesno(FD_ISSET(conn->sock, &fd_r)),
 				yesno(conn_wnt_out(conn)),
@@ -1062,8 +1070,6 @@ connset_poll(connset_t *cs) {
 				}
 			}
 
-			connset_unlock(conn->connset);
-
 			if (conn->hasevents != 0) {
 				logline(log_DEBUG_,
 					CONN_ID " Adding to ready list",
@@ -1076,11 +1082,10 @@ connset_poll(connset_t *cs) {
 				 * Clear the bits so that select() does
 				 * not notice them
 				 */
-				connset_lock(conn->connset);
 				FD_CLR(conn->sock, &conn->connset->fd_read);
 				FD_CLR(conn->sock, &conn->connset->fd_write);
-				connset_unlock(conn->connset);
 
+				assert(conn->connset_l == &conn->connset->active);
 				list_remove(&conn->connset->active,
 					    &conn->node);
 				list_addtail_l(&conn->connset->ready,
@@ -1092,7 +1097,7 @@ connset_poll(connset_t *cs) {
 					conn_id(conn));
 			}
 		}
-		list_unlock(&cs->active);
+
 
 #ifdef POLLDEBUG
 		if (i != j) {
@@ -1100,35 +1105,58 @@ connset_poll(connset_t *cs) {
 
 			for (i = 0; i < hifd; i++) {
 				if (FD_ISSET(i, &fd_r))
-					logline(log_DEBUG_, "   read: %u", i);
+					logline(log_DEBUG_, "   read: " SOCK_ID, i);
 				if (FD_ISSET(i, &fd_w))
-					logline(log_DEBUG_, "   write: %u", i);
+					logline(log_DEBUG_, "   write: " SOCK_ID, i);
 			}
 			fassert(false);
 		}
 #endif
+		list_unlock(&cs->active);
+
+		connset_unlock(cs);
 	}
 
 	return (0);
 }
 
-/* For conn_get_ready() and conn_get_one_ready() */
+/*
+ * For conn_get_ready() and conn_get_one_ready()
+ * This 'circumvents' conn_eventA()
+ * Finalize this with 'handled_ready'
+ */
 void
-connset_set_inactive(connset_t *cs, conn_t *conn);
+connset_setup_ready(conn_t *conn);
 void
-connset_set_inactive(connset_t *cs, conn_t *conn) {
+connset_setup_ready(conn_t *conn) {
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
+
 	/* Lock her up */
-	connset_lock(cs);
+	conn_lock(conn);
+	connset_lock(conn->connset);
+
+	/* Clear the bits so that select() ignores them */
+	if (conn->wntevents & CONN_POLLIN) {
+		FD_CLR(conn->sock, &conn->connset->fd_read);
+	}
+
+	if (conn->wntevents & CONN_POLLOUT) {
+		FD_CLR(conn->sock, &conn->connset->fd_write);
+	}
 
 	/*
-	 * we took conn from the ready list
-	 * add it to inactive
+	 * We took conn from the ready list
+	 * add it to inactive list
 	 */
-	list_remove_l(&cs->inactive, &conn->node);
-	conn->connset_l = &cs->inactive;
+	assert(conn->connset_l == &conn->connset->ready);
+	list_addtail_l(&conn->connset->inactive, &conn->node);
+	conn->connset_l = &conn->connset->inactive;
+
+	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
 
 	/* Release her */
-	connset_unlock(cs);
+	connset_unlock(conn->connset);
+	conn_unlock(conn);
 }
 
 conn_t *
@@ -1137,7 +1165,7 @@ connset_get_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_getnext(&cs->ready);
 	if (conn != NULL) {
-		connset_set_inactive(cs, conn);
+		connset_setup_ready(conn);
 	}
 
 	return (conn);
@@ -1149,23 +1177,25 @@ connset_get_one_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_pop(&cs->ready);
 	if (conn != NULL) {
-		connset_set_inactive(cs, conn);
+		connset_setup_ready(conn);
 	}
 
 	return (conn);
 }
 
+/* Paired with a conn_get_{one_}ready and thus conn_handle_ready() */
 void
 connset_handled_ready(conn_t *conn) {
+	hlist_t *l;
+
+	/* Has to be one some list */
+	fassert(conn->connset_l != NULL);
+
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	/* Lock it */
 	conn_lock(conn);
 	connset_lock(conn->connset);
-
-	logline(log_DEBUG_, "...");
-
-	/* Should come from get_ready/get_one_ready() */
-	fassert(conn->connset_l != NULL);
 
 	/* Set the bits correctly so that select() answers again */
 	if (conn->wntevents & CONN_POLLIN) {
@@ -1178,14 +1208,19 @@ connset_handled_ready(conn_t *conn) {
 
 	/* Place it back on the active/inactive list */
 	if (conn->wntevents == CONN_POLLNONE) {
-		/* Already inactive */
+		l = &conn->connset->inactive;
 	} else {
-		list_remove_l(conn->connset_l, &conn->node);
-		list_addtail_l(&conn->connset->active, &conn->node);
-		conn->connset_l = &conn->connset->active;
+		l = &conn->connset->active;
 	}
 
-	logline(log_DEBUG_, "(done)");
+	/* If not there yet, go there */
+	if (conn->connset_l != l && conn->connset_l != &conn->connset->ready) {
+		list_remove_l(conn->connset_l, &conn->node);
+		list_addtail_l(l, &conn->node);
+		conn->connset_l = l;
+	}
+
+	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
 
 	/* Release it */
 	connset_unlock(conn->connset);
@@ -1197,14 +1232,16 @@ void
 conn_close(conn_t *conn) {
 	conn_lock(conn);
 
-	logline(log_DEBUG_, CONN_ID " closing", conn_id(conn));
-
 	/* Already closed? */
 	if (conn->sock == INVALID_SOCKET) {
 		logline(log_DEBUG_, CONN_ID " Already closed", conn_id(conn));
 		conn_unlock(conn);
 		return;
 	}
+
+	logline(log_DEBUG_,
+		CONN_ID " closing " SOCK_ID,
+		conn_id(conn), conn_sock(conn));
 
 	/* Don't want to hear from this socket any further */
 	conn_eventsA(conn, CONN_POLLNONE);
@@ -1295,6 +1332,8 @@ conn_is_eof(conn_t *conn) {
 /* What do we want to hear? (Mutex locked by caller) */
 void
 conn_eventsA(conn_t *conn, uint16_t events) {
+	hlist_t *new_l;
+
 	fassert(conn_is_valid(conn));
 
 	/*
@@ -1308,6 +1347,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
         if (conn->wntevents == events)
 		return;
 
+	/* Lock her up up */
 	connset_lock(conn->connset);
 
 	/* Currently monitoring for something? */
@@ -1333,39 +1373,27 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		CONN_ID " (A) wnt=%u, ev=%u",
 		conn_id(conn), conn->wntevents, events);
 
-	/* Place it on the right list */
-	if (conn->wntevents != events) {
-		logline(log_DEBUG_,
-			CONN_ID " making %sactive",
-			conn_id(conn), events == 0 ? "in" : "");
+	logline(log_DEBUG_,
+		CONN_ID " making %sactive",
+		conn_id(conn), events == 0 ? "in" : "");
 
-		/* remove from active or ready */
-		if (conn->connset_l) {
+	/* Stay on ready when already there, go active, or go inactive otherwise */
+	new_l = events != CONN_POLLNONE ?
+			(conn->connset_l == &conn->connset->ready ?
+			  &conn->connset->ready : &conn->connset->active) :
+			&conn->connset->inactive;
+
+	if (conn->connset_l != new_l) {
+		/* Remove it from the current list */
+		if (conn->connset_l != NULL) {
 			list_remove_l(conn->connset_l, &conn->node);
-			conn->connset_l = NULL;
 		}
 
-		/* The list it should be on */
-		conn->connset_l = events != 0 ?
-					&conn->connset->active :
-					&conn->connset->inactive,
+		/* Add it to active or inactive */
+		list_addtail_l(new_l, &conn->node);
 
-		/* add it to active */
-		list_addtail_l(conn->connset_l, &conn->node);
-	} else {
-		logline(log_DEBUG_,
-			CONN_ID " remaining on %s (wnt=%u,ev=%u)",
-			conn_id(conn),
-			conn->connset_l == NULL ?
-				"NULL" :
-			conn->connset_l == &conn->connset->active ?
-				"active" :
-			conn->connset_l == &conn->connset->inactive ?
-				"inactive" :
-				"???",
-			conn->wntevents, events);
-
-		/* wntevents == events is handled above as a noop */
+		/* The current list */
+		conn->connset_l = new_l;
 	}
 
 	logline(log_DEBUG_, CONN_ID " (B)", conn_id(conn));
@@ -1387,18 +1415,19 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		/* Make sure we have the right Highest FD */
 		if (conn->sock > conn->connset->hifd) {
 			logline(log_DEBUG_,
-				CONNS_ID " New high FD: %d, " CONN_ID,
+				CONNS_ID " New high FD: " SOCK_ID " " CONN_ID,
 				conn->connset->id,
-				(unsigned int)conn->sock,
+				conn_sock(conn),
 				conn_id(conn));
 			conn->connset->hifd = conn->sock;
 		} else {
 			logline(log_DEBUG_,
-				CONNS_ID " Old high FD: %d, " CONN_ID " = %d]",
+				CONNS_ID " Old high FD: " SOCK_ID
+				", " CONN_ID " = " SOCK_ID,
 				conn->connset->id,
 				conn->connset->hifd,
 				conn_id(conn),
-				(unsigned int)conn->sock);
+				conn_sock(conn));
 		}
 #endif
 	} else {
@@ -2518,6 +2547,8 @@ conn_create_connection(conn_t *conn, const char *hostname,
 			            res->ai_protocol);
 
 		if (conn->sock != INVALID_SOCKET) {
+			logline(log_DEBUG_, "Socket " SOCK_ID,
+				conn_sock(conn));
 #ifndef _LINUX
 #ifndef _WIN32
 			/*
@@ -2629,6 +2660,10 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 		conn_unlock(conn);
 		return (false);
 	}
+
+	logline(log_DEBUG_,
+		CONN_ID " accepted " SOCK_ID,
+		conn_id(conn), conn_sock(conn));
 
 #ifndef _LINUX
 #ifndef _WIN32

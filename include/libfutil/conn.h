@@ -144,7 +144,10 @@ bool conn_is_state(conn_t *conn, connstate_t state);
 #define CONN_ID "[" CONN_IDn "]"
 #define CONNS_ID "[s%" PRIu64 "]"
 
+#define SOCK_ID "[fd%d]"
+
 #define conn_id(conn) ((conn) ? (conn)->id : 0)
+#define conn_sock(conn) ((int)((conn) ? (conn)->sock : 0))
 #define conn_protocol(conn) ((conn)->protocol)
 #define conn_port(conn) ((conn)->port)
 #define conn_type(conn) ((conn)->type)
