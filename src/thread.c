@@ -5,9 +5,13 @@
 #define DD(x) x
 
 /* List of all the threads */
-hlist_t *g_threads = NULL;
-bool g_keep_running = true;
-bool g_threads_initialized = false;
+hlist_t *l_threads = NULL;
+#ifndef _WIN32
+mutex_t l_tmutex = PTHREAD_MUTEX_INITIALIZER;
+#else
+mutex_t l_tmutex;
+#endif
+bool l_keep_running = true;
 
 const char *ts_names[20] = {
 	"dying",
@@ -52,13 +56,21 @@ thread_signal(DWORD UNUSED sig) {
 
 bool
 thread_init(void) {
-	g_threads = mcalloc(sizeof *g_threads, "g_threads");
-	if (!g_threads) {
+	assert(l_threads == NULL);
+
+	l_threads = mcalloc(sizeof *l_threads, "l_threads");
+	if (!l_threads) {
 		logline(log_ERR_, "Could not add main thread!?");
 		return (false);
 	}
 
-	list_init(g_threads);
+#ifdef _WIN32
+	mutex_init(l_tmutex);
+#else
+	/* Initialized with static pthread initializer */
+#endif
+
+	list_init(l_threads);
 
 	if (!thread_add("Main", NULL, NULL)) {
 		logline(log_ERR_, "Could not add main thread!?");
@@ -74,9 +86,6 @@ thread_init(void) {
 	SetConsoleCtrlHandler((PHANDLER_ROUTINE)thread_signal, true);
 #endif
 
-	/* We have liftoff */
-	g_threads_initialized = true;
-
 	return (true);
 }
 
@@ -87,12 +96,18 @@ static mythread_t *
 thread_getbyid(os_thread_id thread_id) {
 	mythread_t *t, *tn, *tf = NULL;
 
-	if (!g_threads_initialized)
+#ifdef _WIN32
+	/* XXX */
+	if (l_threads != NULL) {
 		return (NULL);
+	}
+#else
+	mutex_lock(l_tmutex);
+#endif
 
-	list_lock(g_threads);
+	list_lock(l_threads);
 
-	list_for(g_threads, t, tn, mythread_t *) {
+	list_for(l_threads, t, tn, mythread_t *) {
 		if (t->thread_id != thread_id)
 			continue;
 
@@ -101,7 +116,12 @@ thread_getbyid(os_thread_id thread_id) {
 		break;
 	}
 
-	list_unlock(g_threads);
+	list_unlock(l_threads);
+
+#ifdef _WIN32
+#else
+	mutex_unlock(l_tmutex);
+#endif
 
 	return (tf);
 }
@@ -125,7 +145,7 @@ thread_remove(mythread_t *t) {
 
 	logline(log_DEBUG_, "Thread %s started", t->description);
 
-	list_remove_l(g_threads, &t->node);
+	list_remove_l(l_threads, &t->node);
 }
 
 void
@@ -247,7 +267,7 @@ thread_start(mythread_t *t) {
 		t->start_routine ? "" : " (" STR(PROJECT_BUILDTIME) ")");
 
 	/* Add self to the list of threads */
-	list_addtail_l(g_threads, &t->node);
+	list_addtail_l(l_threads, &t->node);
 }
 
 #ifndef _WIN32
@@ -356,13 +376,13 @@ thread_stopall(bool force) {
 	logline(log_DEBUG_, "Signalling thread that they should exit");
 
 	/* Must be initialized */
-	fassert(g_threads != NULL);
+	fassert(l_threads != NULL);
 
 	/* Set the stop running flag so threads get a hint */
 	thread_stop_running();
 
-	list_lock(g_threads);
-	list_for(g_threads, t, tn, mythread_t *) {
+	list_lock(l_threads);
+	list_for(l_threads, t, tn, mythread_t *) {
 		if (t->thread_id == tid)
 			continue;
 #ifndef _WIN32
@@ -371,16 +391,16 @@ thread_stopall(bool force) {
 		/* XXX: Signal threads that they should exit (win32) */
 #endif
 	}
-	list_unlock(g_threads);
+	list_unlock(l_threads);
 
 	/* Make sure that all threads have ended */
 	while (i < 20 && !done) {
 		done = true;
 
 		/* Sleep a bit if there is something in the list */
-		if (!list_isempty(g_threads)) {
-			list_lock(g_threads);
-			list_for(g_threads, t, tn, mythread_t *) {
+		if (!list_isempty(l_threads)) {
+			list_lock(l_threads);
+			list_for(l_threads, t, tn, mythread_t *) {
 				if (t->thread_id == tid)
 					continue;
 
@@ -398,7 +418,7 @@ thread_stopall(bool force) {
 #endif
 				done = false;
 			}
-			list_unlock(g_threads);
+			list_unlock(l_threads);
 		}
 
 		if (!done) {
@@ -411,9 +431,9 @@ thread_stopall(bool force) {
 	}
 
 	/* Force cleanup */
-	if (force && !list_isempty(g_threads)) {
+	if (force && !list_isempty(l_threads)) {
 
-		while ((t = (mythread_t *)list_pop(g_threads))) {
+		while ((t = (mythread_t *)list_pop(l_threads))) {
 			if (t->thread_id != tid) {
 				logline(log_DEBUG_,
 					" Was still running: [tr%" PRIu64 "] "
@@ -441,21 +461,20 @@ void
 thread_exit(void) {
 	logline(log_DEBUG_, "...");
 
-	fassert(g_threads != NULL);
+	fassert(l_threads != NULL);
 
 	/* Stop all running threads */
 	thread_stopall(true);
 
-	/* Not inititalized anymore */
-	g_threads_initialized = false;
+	fassert(list_isempty(l_threads));
 
-	fassert(list_isempty(g_threads));
-
-	list_destroy(g_threads);
-	mfree(g_threads, sizeof *g_threads, "g_threads");
-	g_threads = NULL;
+	list_destroy(l_threads);
+	mfree(l_threads, sizeof *l_threads, "l_threads");
+	l_threads = NULL;
 
 	logline(log_DEBUG_, "done");
+
+	mutex_destroy(l_tmutex);
 }
 
 unsigned int
@@ -467,8 +486,8 @@ thread_list(thread_list_f cb, void *cbdata) {
 	unsigned int	cnt = 0;
 	char		st[64];
 
-	list_lock(g_threads);
-	list_for(g_threads, t, tn, mythread_t *) {
+	list_lock(l_threads);
+	list_for(l_threads, t, tn, mythread_t *) {
 		localtime_r(&t->starttime, &teem);
 
 		/* Format the start time */
@@ -490,7 +509,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 		/* Another thread */
 		cnt++;
 	}
-	list_unlock(g_threads);
+	list_unlock(l_threads);
 
 	return (cnt);
 }
@@ -498,11 +517,20 @@ thread_list(thread_list_f cb, void *cbdata) {
 void
 thread_stop_running(void) {
 	logline(log_DEBUG_, "Stop running...");
-	g_keep_running = false;
+
+	mutex_lock(l_tmutex);
+	l_keep_running = false;
+	mutex_unlock(l_tmutex);
 }
 
 bool
 thread_keep_running(void) {
-	return (g_keep_running);
+	bool	r;
+
+	mutex_lock(l_tmutex);
+	r = l_keep_running;
+	mutex_unlock(l_tmutex);
+
+	return (r);
 }
 
