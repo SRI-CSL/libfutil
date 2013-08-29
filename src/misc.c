@@ -90,7 +90,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 
 		/* Error or over our limit */
 		rewind(l_log_output);
-		ftruncate(fileno(l_log_output), 0);
+		(void)ftruncate(fileno(l_log_output), 0);
 	}
 
 	/* Not open yet? */
@@ -967,9 +967,9 @@ futil_daemonize(const char *pidfile) {
 	}
 
 	/* Cleanup stdin/out/err */
-	freopen("/dev/null", "r", stdin);
-	freopen("/dev/null", "w", stdout);
-	freopen("/dev/null", "w", stderr);
+	(void)freopen("/dev/null", "r", stdin);
+	(void)freopen("/dev/null", "w", stdout);
+	(void)freopen("/dev/null", "w", stderr);
 	pid = getpid();
 
 	/* Store the PID if needed */
