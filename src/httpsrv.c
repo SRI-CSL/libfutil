@@ -50,6 +50,9 @@ httpsrv_methodname(unsigned int method) {
 
 void
 httpsrv_set_userdata(httpsrv_client_t *hcl, void *user) {
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " %p",
+		hcl->id, conn_id(&hcl->conn), user);
 	hcl->user = user;
 }
 
@@ -918,6 +921,10 @@ httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
 
 	/* Directly suck the existing buffer empty */
 	httpsrv_handle_http(hin);
+
+	logline(log_DEBUG_,
+		HCL_ID " to " HCL_ID " (done)",
+		hin->id, hout->id);
 }
 
 /* These pull items off the active queue */
