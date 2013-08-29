@@ -99,8 +99,8 @@ struct httpsrv_client {
 	hnode_t			node;		/* Session list node */
 	uint64_t		id;		/* Unique ID */
 	uint64_t		reqid;		/* Number of request handled */
-	time_t			starttime;	/* Time started */
-	time_t			lastact;	/* Time of last activity */
+	uint64_t		starttime;	/* Time started */
+	uint64_t		lastact;	/* Time of last activity */
 	httpsrv_t		*hs;		/* HTTP Server */
 	conn_t			conn;		/* Connection */
 	http_method_t		method;		/* HTTP Method */
