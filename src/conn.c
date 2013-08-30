@@ -5,7 +5,7 @@
 /*
  * Debug polling mechanism - enables extra checks and assert()s
 */
-#define POLLDEBUG
+/* #define POLLDEBUG */
 
 /*
  * For the keyfile.pem + server.pem use:
