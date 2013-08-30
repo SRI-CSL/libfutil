@@ -534,7 +534,7 @@ httpsrv_done(httpsrv_client_t *hcl) {
 bool
 httpsrv_parse_request(httpsrv_client_t *hcl) {
 	unsigned int	j, ao = 0, uo = 0;
-	char		c, *line = hcl->the_request;
+	char		c, *line = hcl->the_request, *s, *h;
 	bool		isarg = false;
 	uint32_t	proto;
 
@@ -596,7 +596,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 				logline(log_NOTICE_,
 					HCL_ID " " CONN_ID " Broken URL: %s",
 					hcl->id, conn_id(&hcl->conn), line);
-				httpsrv_error(hcl, 400, "Broken URL");
+				httpsrv_error(hcl, 400, "Wrongly encoded URL");
 				return (false);
 			}
 
@@ -670,6 +670,50 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		hcl->headers.remote_ip,
 		sizeof hcl->headers.remote_ip,
 		&proto, &hcl->headers.remote_port);
+
+	/* Not starting with a slash, possibly a proxied request */
+	if (hcl->headers.uri[0] != '/') {
+		/* Strip http/https proxied URLs */
+		if (strncasecmp(hcl->headers.uri, "http://", 7) == 0 ||
+		    strncasecmp(hcl->headers.uri, "https://", 8) == 0) {
+			logline(log_DEBUG_,
+				HCL_ID " " CONN_ID " Proxied Request: %s",
+				hcl->id, conn_id(&hcl->conn),
+				hcl->headers.uri);
+
+			/* Find the end of the hostname */
+			h = hcl->headers.uri;
+			h = strchr(h, '/');
+			h = strchr(h+1, '/');
+			s = strchr(h+1, '/');
+			if (s == NULL) {
+				logline(log_NOTICE_,
+					HCL_ID " " CONN_ID
+					" Broken Proxy URL: %s",
+					hcl->id, conn_id(&hcl->conn),
+					hcl->headers.uri);
+				httpsrv_error(hcl, 400, "Broken Proxy URL");
+				return (false);
+			}
+
+			/* The hostname */
+			strncpy(hcl->headers.hostname,
+				h+1, (s - h) - 1);
+
+			/* Move the real URI to the start */
+			memmove(hcl->headers.uri, s,
+				sizeof(hcl->headers.uri) -
+					(s - hcl->headers.uri));
+		} else {
+			logline(log_NOTICE_,
+				HCL_ID " " CONN_ID
+				" Broken URL: %s",
+				hcl->id, conn_id(&hcl->conn),
+				hcl->headers.uri);
+			httpsrv_error(hcl, 400, "URL without root");
+			return (false);
+		}
+	}
 
 	/* Note that this client hit us */
 	logline(log_DEBUG_,
