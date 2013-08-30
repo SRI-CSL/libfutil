@@ -486,23 +486,44 @@ thread_exit(void) {
 
 unsigned int
 thread_list(thread_list_f cb, void *cbdata) {
-	mythread_t	*t, *tn;
+	mythread_t	*t, *tn, *tc;
 	os_thread_id	thread_id = getthisthreadid();
 	struct tm	teem;
 	uint64_t	now = gettime();
 	unsigned int	cnt = 0;
 	char		st[64];
+	hlist_t		tl;
+
+	list_init(&tl);
 
 	list_lock(l_threads);
 	list_for(l_threads, t, tn, mythread_t *) {
-		localtime_r(&t->starttime, &teem);
+		tc = mcalloc(sizeof *t, "tmpthread");
+		if (tc == NULL)
+			break;
 
+		/* Clone it */
+		thread_lock(t);
+		memcpy(tc, t, sizeof *tc);
+		thread_unlock(t);
+
+		/* Empty the node, it is a clone */
+		node_init(&tc->node);
+
+		list_addtail(&tl, &tc->node);
+
+		/* Another thread */
+		cnt++;
+	}
+	list_unlock(l_threads);
+
+	/* Now, lockless, do the call backs */
+	list_for(&tl, t, tn, mythread_t *) {
 		/* Format the start time */
+		localtime_r(&t->starttime, &teem);
 		snprintf(st, sizeof st, FMT_DATETIME, fmt_datetime(teem));
 
 		/* Callback which might actually show the details */
-		/* (lets hope it does not create any threads or so ;) */
-		thread_lock(t);
 		cb(cbdata,
 		   t->thread_num,
 		   t->thread_id,
@@ -513,12 +534,9 @@ thread_list(thread_list_f cb, void *cbdata) {
 		   ts_names[t->state],
 		   t->message,
 		   t->served);
-		thread_unlock(t);
 
-		/* Another thread */
-		cnt++;
+		mfree(t, sizeof *t, "tmpthread");
 	}
-	list_unlock(l_threads);
 
 	return (cnt);
 }
