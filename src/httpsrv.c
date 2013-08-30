@@ -58,16 +58,35 @@ httpsrv_set_userdata(httpsrv_client_t *hcl, void *user) {
 
 void
 httpsrv_close(httpsrv_client_t *hcl) {
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID,
+		hcl->id, conn_id(&hcl->conn));
 	hcl->close = true;
 }
 
-void
-httpsrv_client_close(httpsrv_client_t *hcl);
-void
-httpsrv_client_close(httpsrv_client_t *hcl) {
+bool
+httpsrv_client_close(httpsrv_client_t *hcl, bool force);
+bool
+httpsrv_client_close(httpsrv_client_t *hcl, bool force) {
 	logline(log_DEBUG_,
-		"Closing session " HCL_ID ", " CONN_ID,
+		HCL_ID ", " CONN_ID " Closing session",
 		hcl->id, conn_id(&hcl->conn));
+
+	/* Flush & Close the connections */
+	if (conn_is_there(&hcl->conn)) {
+		conn_flush(&hcl->conn);
+
+		if (!force && conn_flushleft(&hcl->conn) > 0) {
+			logline(log_DEBUG_,
+				HCL_ID ", " CONN_ID " Can't close "
+				"still need to flush more",
+				hcl->id, conn_id(&hcl->conn));
+			return (false);
+		}
+
+		/* All done, destroy it */
+		conn_destroy(&hcl->conn);
+	}
 
 	if (hcl->hs->close)
 		hcl->hs->close(hcl, hcl->user);
@@ -75,13 +94,8 @@ httpsrv_client_close(httpsrv_client_t *hcl) {
 	/* Cleanup the headers */
 	buf_destroy(&hcl->the_headers);
 
-	/* Flush & Close the connections */
-	if (conn_is_there(&hcl->conn)) {
-		conn_flush(&hcl->conn);
-		conn_destroy(&hcl->conn);
-	}
-
 	mfree(hcl, sizeof *hcl, "httpsrv_client_t");
+	return (true);
 }
 
 static void
@@ -141,6 +155,10 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			if (len > hcl->skipbody_len) {
 				len = hcl->skipbody_len;
 			}
+
+			logline(log_DEBUG_,
+				HCL_ID " " CONN_ID " SkipBody %" PRIu64,
+				hcl->id, conn_id(&hcl->conn), len);
 
 			/* Skip it */
 			conn_buffer_shift(&hcl->conn, len);
@@ -290,7 +308,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				hcl->id);
 
 			/* Close it up */
-			hcl->close = true;
+			httpsrv_close(hcl);
 			return;
 
 		} else if (i < 0) {
@@ -299,7 +317,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 				hcl->id, i);
 
 			/* Close it up */
-			hcl->close = true;
+			httpsrv_close(hcl);
 			return;
 
 		} else if (i == 0) {
@@ -370,7 +388,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 					httpsrv_error(hcl, 400,
 						"POST without Content-Length");
-					hcl->close = true;
+					httpsrv_close(hcl);
 				}
 			}
 
@@ -423,7 +441,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->id, line);
 
 				httpsrv_error(hcl, 501, "Not Implemented");
-				hcl->close = true;
+				httpsrv_close(hcl);
 				return;
 			}
 
@@ -433,7 +451,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->id, line);
 
 				httpsrv_error(hcl, 414, "Request-URI Too Long");
-				hcl->close = true;
+				httpsrv_close(hcl);
 				return;
 			}
 
@@ -458,14 +476,16 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 void
 httpsrv_done(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_,
-		HCL_ID " " CONN_ID " is done (%s)",
-		hcl->id, conn_id(&hcl->conn),
-		httpsrv_methodname(hcl->method));
-
 	/* Skip remaining content_length */
 	hcl->skipbody_len = hcl->headers.content_length;
 	hcl->headers.content_length = 0;
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " is done (%s), "
+		"remainder %" PRIu64,
+		hcl->id, conn_id(&hcl->conn),
+		httpsrv_methodname(hcl->method),
+		hcl->skipbody_len);
 
 	/* Clean up read body */
 	httpsrv_readbody_free(hcl);
@@ -474,7 +494,11 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	if (hcl->hs->done)
 		hcl->hs->done(hcl, hcl->user);
 
-	/* Flush the output */
+	/*
+	 * Flush the output buffer
+	 * We do not care if the flush is complete,
+	 * that will happen in the livetime of it
+	 */
 	conn_flush(&hcl->conn);
 
 	/* No method yet */
@@ -793,6 +817,7 @@ httpsrv_newcl(httpsrv_t *hs) {
 	/* Unique number, for easy debugging */
 	static uint64_t		cl_id = 0;
 	httpsrv_client_t	*hcl;
+	bool			r;
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
@@ -819,7 +844,11 @@ httpsrv_newcl(httpsrv_t *hs) {
 			HCL_ID " Could not init connection",
 			hcl->id);
 
-		httpsrv_client_close(hcl);
+		r = httpsrv_client_close(hcl, true);
+		if (!r) {
+			logline(log_CRIT_, "Could not close new HCL (conn)");
+		}
+
 		return (NULL);
 	}
 
@@ -829,7 +858,11 @@ httpsrv_newcl(httpsrv_t *hs) {
 			HCL_ID " Could not init buf",
 			hcl->id);
 
-		httpsrv_client_close(hcl);
+		r = httpsrv_client_close(hcl, true);
+		if (!r) {
+			logline(log_CRIT_, "Could not close new HCL (buf)");
+		}
+
 		return (NULL);
 	}
 
@@ -842,6 +875,7 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	httpsrv_client_t	*hcl;
 	char			address[256];
 	uint32_t		proto, port;
+	bool			r;
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
@@ -853,7 +887,12 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 			HCL_ID " conn_accept()",
 			hcl->id);
 
-		httpsrv_client_close(hcl);
+		r = httpsrv_client_close(hcl, true);
+		if (!r) {
+			logline(log_NOTICE_,
+				HCL_ID " Could not close HCL on accept",
+				hcl->id);
+		}
 		return;
 	}
 
@@ -892,7 +931,7 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 		logline(log_DEBUG_,
 			HCL_ID " " CONN_ID " Remote closed connection (%d)",
 			hcl->id, conn_id(&hcl->conn), i);
-		hcl->close = true;
+		httpsrv_close(hcl);
 	} else {
 		if (hcl->busy) {
 			logline(log_DEBUG_,
@@ -1028,11 +1067,20 @@ httpsrv_worker_thread(void *context) {
 			/* Need to close it? */
 			if (hcl->close) {
 				logline(log_DEBUG_,
-					HCL_ID " " CONN_ID " closing",
+					HCL_ID " " CONN_ID " Closing",
 					hcl->id, conn_id(conn));
-				list_remove_l(&hs->sessions, &hcl->node);
-				httpsrv_client_close(hcl);
-				conn = NULL;
+
+				if (httpsrv_client_close(hcl, false)) {
+					/* It really is gone */
+					list_remove_l(&hs->sessions, &hcl->node);
+					conn = NULL;
+				} else {
+					/* It should go later */
+					logline(log_DEBUG_,
+						HCL_ID " " CONN_ID
+						" Closing delayed for flush",
+						hcl->id, conn_id(conn));
+				}
 			}
 		}
 
@@ -1182,9 +1230,9 @@ httpsrv_exit(httpsrv_t *hs) {
 
 	/* Cleanup all open sessions */
 	while ((hcl = (httpsrv_client_t *)list_pop(&hs->sessions))) {
-		logline(log_DEBUG_, "closing [hs%" PRIu64 "]" CONN_ID,
-			hs->id, conn_id(&hcl->conn));
-		httpsrv_client_close(hcl);
+		logline(log_DEBUG_, HCL_ID " " CONN_ID " exiting",
+			hcl->id, conn_id(&hcl->conn));
+		httpsrv_client_close(hcl, true);
 	}
 
 	/* Cleanup all remaining connections */
