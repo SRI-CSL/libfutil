@@ -65,6 +65,25 @@ conn_unlock(conn_t *conn) {
 	mutex_unlock(conn->mutex);
 }
 
+#define conn_bits(func,x)			\
+bool						\
+func(conn_t *conn) {				\
+	bool b;					\
+						\
+/*	conn_lock(conn);	*/		\
+	b = (x);				\
+/*	conn_unlock(conn);	*/		\
+						\
+	return (b);				\
+}
+
+conn_bits(conn_wnt_in,	conn->wntevents & CONN_POLLIN)
+conn_bits(conn_wnt_out,	conn->wntevents & CONN_POLLOUT)
+conn_bits(conn_poll_in,	(conn->hasevents & CONN_POLLIN) &&
+	   		(conn->wntevents & CONN_POLLIN))
+conn_bits(conn_poll_out,(conn->hasevents & CONN_POLLOUT) &&
+			(conn->wntevents & CONN_POLLOUT))
+
 static void
 conn_set_nonblocking(conn_t *conn) {
 #ifndef _WIN32
@@ -1240,7 +1259,7 @@ conn_close(conn_t *conn) {
 	}
 
 	logline(log_DEBUG_,
-		CONN_ID " closing " SOCK_ID,
+		CONN_ID " " SOCK_ID " closing",
 		conn_id(conn), conn_sock(conn));
 
 	/* Don't want to hear from this socket any further */
@@ -1958,7 +1977,24 @@ conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
 }
 #endif /* CONN_SSL */
 
-/* Flush a bit more of the buffer towards the client */
+uint64_t
+conn_flushleft(conn_t *conn) {
+	uint64_t l;
+
+	conn_lock(conn);
+
+	l = buf_cur(&conn->send) +
+	    buf_cur(&conn->send_headers);
+
+	conn_unlock(conn);
+
+	return (l);
+}
+
+/*
+ * Flush a bit more of the buffer towards the client
+ * Might be async and not flush everything
+ */
 bool
 conn_flush(conn_t *conn) {
 	ssize_t		r;

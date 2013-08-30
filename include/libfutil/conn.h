@@ -117,6 +117,7 @@ int conn_recv(conn_t *conn);
 int conn_recvline(conn_t *conn, char *buf, unsigned int buflen);
 void conn_recv_empty(conn_t *conn, uint64_t len);
 
+uint64_t conn_flushleft(conn_t *conn);
 bool conn_flush(conn_t *conn);
 
 void conn_set_flush_hook(conn_t *conn, conn_flush_hook hook, void *data);
@@ -188,12 +189,10 @@ typedef enum {
 	CONN_POLLOUT	= 2
 } connpoll_t;
 
-#define conn_wnt_in(conn) (conn->wntevents & CONN_POLLIN)
-#define conn_wnt_out(conn) (conn->wntevents & CONN_POLLOUT)
-#define conn_has_in(conn) (conn->hasevents & CONN_POLLIN)
-#define conn_has_out(conn) (conn->hasevents & CONN_POLLOUT)
-#define conn_poll_in(conn) (conn_wnt_in(conn) && conn_has_in(conn))
-#define conn_poll_out(conn) (conn_wnt_out(conn) && conn_has_out(conn))
+bool conn_wnt_in(conn_t *conn);
+bool conn_wnt_out(conn_t *conn);
+bool conn_poll_in(conn_t *conn);
+bool conn_poll_out(conn_t *conn);
 
 void connset_init(connset_t *cs);
 void connset_destroy(connset_t *cs);
