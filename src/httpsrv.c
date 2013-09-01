@@ -1070,10 +1070,12 @@ httpsrv_worker_thread(void *context) {
 					HCL_ID " " CONN_ID " Closing",
 					hcl->id, conn_id(conn));
 
+				/* Handling needs to be done */
+				connset_handled_ready(conn);
+
 				if (httpsrv_client_close(hcl, false)) {
 					/* It really is gone */
 					list_remove_l(&hs->sessions, &hcl->node);
-					conn = NULL;
 				} else {
 					/* It should go later */
 					logline(log_DEBUG_,
@@ -1081,6 +1083,9 @@ httpsrv_worker_thread(void *context) {
 						" Closing delayed for flush",
 						hcl->id, conn_id(conn));
 				}
+
+				/* Already done handled_ready */
+				conn = NULL;
 			}
 		}
 
@@ -1189,7 +1194,7 @@ httpsrv_sessions(httpsrv_client_t *hcl) {
 
 		conn_printf(&hcl->conn,
 			    "<tr>"
-			    "<td>%" PRIu64 "</td>"
+			    "<td>" HCL_ID "</td>"
 			    "<td>%" PRIu64 "</td>"
 			    "<td>%s</td>"
 			    "<td>%u</td>"
