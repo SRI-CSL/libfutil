@@ -1102,9 +1102,10 @@ connset_poll(connset_t *cs) {
 				assert(conn->connset_l == &conn->connset->active);
 				list_remove(&conn->connset->active,
 					    &conn->node);
+
+				conn->connset_l = &conn->connset->ready;
 				list_addtail_l(&conn->connset->ready,
 					       &conn->node);
-				conn->connset_l = &conn->connset->ready;
 
 				logline(log_DEBUG_,
 					CONN_ID " Added to ready list",
@@ -1234,8 +1235,8 @@ connset_handled_ready(conn_t *conn) {
 
 	/* Put it on the right list */
 	list_remove_l(conn->connset_l, &conn->node);
-	list_addtail_l(l, &conn->node);
 	conn->connset_l = l;
+	list_addtail_l(l, &conn->node);
 
 	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
 
@@ -1430,11 +1431,11 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 				list_remove_l(conn->connset_l, &conn->node);
 			}
 
-			/* Add it to active or inactive */
-			list_addtail_l(new_l, &conn->node);
-
 			/* The current list */
 			conn->connset_l = new_l;
+
+			/* Add it to active or inactive */
+			list_addtail_l(new_l, &conn->node);
 		}
 
 		logline(log_DEBUG_,
