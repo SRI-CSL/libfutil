@@ -14,9 +14,10 @@
 
 typedef struct {
 	mutex_t		mutex;		/* Connset lock (for fd_*) */
-	hlist_t		active;		/* Active connections in this set */
+	hlist_t		active;		/* Active connections in this set (polling) */
 	hlist_t		ready;		/* Connections that are ready */
-	hlist_t		inactive;	/* Unmonitored connections */
+	hlist_t		inactive;	/* Inactive connections (no polling) */
+	hlist_t		handling;	/* Connections being handled */
 
 	fd_set		fd_read;	/* Read FDs */
 	fd_set		fd_write;	/* Write FDs */

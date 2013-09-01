@@ -848,11 +848,12 @@ conn_destroy(conn_t *conn) {
 
 	/* Unlink the node from any list it was put on */
 	if (conn->connset != NULL) {
-		/* conn_close() made this inactive */
-		list_remove_l(&conn->connset->inactive, &conn->node);
+		/* XXX: should be 'inactive' as that is what conn_close() causes */
+		list_remove_l(conn->connset_l, &conn->node);
 
 		/* No more conset here */
 		conn->connset = NULL;
+		conn->connset_l = NULL;
 	}
 
 	mutex_destroy(conn->mutex);
@@ -877,14 +878,17 @@ connset_init(connset_t *cs) {
 	list_init(&cs->active);
 	list_init(&cs->ready);
 	list_init(&cs->inactive);
+	list_init(&cs->handling);
 
 	logline(log_DEBUG_,
 		"active: " LIST_ID
 		", ready: " LIST_ID
-		", inactive: " LIST_ID,
+		", inactive: " LIST_ID
+		", handling: " LIST_ID,
 		list_id(&cs->active),
 		list_id(&cs->ready),
-		list_id(&cs->inactive)
+		list_id(&cs->inactive),
+		list_id(&cs->handling)
 		);
 
 	FD_ZERO(&cs->fd_read);
@@ -894,46 +898,37 @@ connset_init(connset_t *cs) {
 	cs->hifd = -1;
 }
 
-void
-connset_destroy(connset_t *cs) {
+unsigned int
+connset_destroy_list(hlist_t *l, const char *state);
+unsigned int
+connset_destroy_list(hlist_t *l, const char *state) {
 	unsigned int	i = 0;
 	conn_t		*conn;
 
+	while ((conn = (conn_t *)list_pop(l))) {
+		conn->connset = NULL;
+		conn->connset_l = NULL;
+
+		i++;
+		logline(log_DEBUG_,
+			"closing %s " CONN_ID,
+			state, conn_id(conn));
+		conn_destroy(conn);
+		mfree(conn, sizeof *conn, "conn");
+	}
+
+	return (i);
+}
+
+void
+connset_destroy(connset_t *cs) {
+	unsigned int	i;
+
 	do {
-		i = 0;
-
-		while ((conn = (conn_t *)list_pop(&cs->ready))) {
-			conn->connset = NULL;
-			conn->connset_l = NULL;
-
-			i++;
-			logline(log_DEBUG_,
-				"closing ready " CONN_ID, conn_id(conn));
-			conn_destroy(conn);
-			mfree(conn, sizeof *conn, "conn");
-		}
-
-		while ((conn = (conn_t *)list_pop(&cs->active))) {
-			conn->connset = NULL;
-			conn->connset_l = NULL;
-
-			i++;
-			logline(log_DEBUG_,
-				"closing active " CONN_ID, conn_id(conn));
-			conn_destroy(conn);
-			mfree(conn, sizeof *conn, "conn");
-		}
-
-		while ((conn = (conn_t *)list_pop(&cs->inactive))) {
-			conn->connset = NULL;
-			conn->connset_l = NULL;
-
-			i++;
-			logline(log_DEBUG_,
-				"closing inactive " CONN_ID, conn_id(conn));
-			conn_destroy(conn);
-			mfree(conn, sizeof *conn, "conn");
-		}
+		i  = connset_destroy_list(&cs->handling,"handling");
+		i += connset_destroy_list(&cs->active,	"active");
+		i += connset_destroy_list(&cs->ready,	"ready");
+		i += connset_destroy_list(&cs->inactive,"inactive");
 	} while (i > 0);
 
 	/* Should always be empty */
@@ -1143,6 +1138,8 @@ connset_poll(connset_t *cs) {
  * For conn_get_ready() and conn_get_one_ready()
  * This 'circumvents' conn_eventA()
  * Finalize this with 'handled_ready'
+ *
+ * This puts a connection on the handling list.
  */
 void
 connset_setup_ready(conn_t *conn);
@@ -1165,11 +1162,11 @@ connset_setup_ready(conn_t *conn) {
 
 	/*
 	 * We took conn from the ready list
-	 * add it to inactive list
+	 * add it to handling list
 	 */
 	assert(conn->connset_l == &conn->connset->ready);
-	list_addtail_l(&conn->connset->inactive, &conn->node);
-	conn->connset_l = &conn->connset->inactive;
+	list_addtail_l(&conn->connset->handling, &conn->node);
+	conn->connset_l = &conn->connset->handling;
 
 	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
 
@@ -1216,6 +1213,9 @@ connset_handled_ready(conn_t *conn) {
 	conn_lock(conn);
 	connset_lock(conn->connset);
 
+	/* Should still be on the handling list */
+	assert(conn->connset_l == &conn->connset->handling);
+
 	/* Set the bits correctly so that select() answers again */
 	if (conn->wntevents & CONN_POLLIN) {
 		FD_SET(conn->sock, &conn->connset->fd_read);
@@ -1232,12 +1232,10 @@ connset_handled_ready(conn_t *conn) {
 		l = &conn->connset->active;
 	}
 
-	/* If not there yet, go there */
-	if (conn->connset_l != l && conn->connset_l != &conn->connset->ready) {
-		list_remove_l(conn->connset_l, &conn->node);
-		list_addtail_l(l, &conn->node);
-		conn->connset_l = l;
-	}
+	/* Put it on the right list */
+	list_remove_l(conn->connset_l, &conn->node);
+	list_addtail_l(l, &conn->node);
+	conn->connset_l = l;
 
 	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
 
@@ -1348,6 +1346,16 @@ conn_is_eof(conn_t *conn) {
 	return (ret);
 }
 
+const char *connset_list(connset_t *cs, hlist_t *l);
+const char *connset_list(connset_t *cs, hlist_t *l) {
+	return	(l == &cs->ready	? "ready" :
+		(l == &cs->active	? "active" :
+		(l == &cs->inactive	? "inactive" :
+		(l == &cs->handling	? "handling" :
+		(l == NULL		? "<none>" :
+					  "<unknown>")))));
+}
+
 /* What do we want to hear? (Mutex locked by caller) */
 void
 conn_eventsA(conn_t *conn, uint16_t events) {
@@ -1369,66 +1377,82 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 	/* Lock her up up */
 	connset_lock(conn->connset);
 
-	/* Currently monitoring for something? */
-	if ((conn->wntevents & CONN_POLLIN) !=
-	          (events & CONN_POLLIN)) {
-		/* Remove the bit? */
-		if (events & CONN_POLLIN)
-			FD_SET(conn->sock, &conn->connset->fd_read);
-		else
-			FD_CLR(conn->sock, &conn->connset->fd_read);
-	}
+	/* When handling, don't change anything except what we want (after if) */
+	if (conn->connset_l == &conn->connset->handling) {
+		logline(log_DEBUG_,
+			CONN_ID " handling thus not changing lists",
+			conn_id(conn));
+	} else {
+		logline(log_DEBUG_,
+			CONN_ID " want=%u, events=%u",
+			conn_id(conn), conn->wntevents, events);
 
-	if ((conn->wntevents & CONN_POLLOUT) !=
-	          (events & CONN_POLLOUT)) {
-		/* Remove the bit? */
-		if (events & CONN_POLLOUT)
-			FD_SET(conn->sock, &conn->connset->fd_write);
-		else
-			FD_CLR(conn->sock, &conn->connset->fd_write);
-	}
-
-	logline(log_DEBUG_,
-		CONN_ID " (A) wnt=%u, ev=%u",
-		conn_id(conn), conn->wntevents, events);
-
-	logline(log_DEBUG_,
-		CONN_ID " making %sactive",
-		conn_id(conn), events == 0 ? "in" : "");
-
-	/* Stay on ready when already there, go active, or go inactive otherwise */
-	new_l = events != CONN_POLLNONE ?
-			(conn->connset_l == &conn->connset->ready ?
-			  &conn->connset->ready : &conn->connset->active) :
-			&conn->connset->inactive;
-
-	if (conn->connset_l != new_l) {
-		/* Remove it from the current list */
-		if (conn->connset_l != NULL) {
-			list_remove_l(conn->connset_l, &conn->node);
+		/* Currently monitoring for something? */
+		if ((conn->wntevents & CONN_POLLIN) !=
+		          (events & CONN_POLLIN)) {
+			/* Remove the bit? */
+			if (events & CONN_POLLIN)
+				FD_SET(conn->sock, &conn->connset->fd_read);
+			else
+				FD_CLR(conn->sock, &conn->connset->fd_read);
 		}
 
-		/* Add it to active or inactive */
-		list_addtail_l(new_l, &conn->node);
+		if ((conn->wntevents & CONN_POLLOUT) !=
+		          (events & CONN_POLLOUT)) {
+			/* Remove the bit? */
+			if (events & CONN_POLLOUT)
+				FD_SET(conn->sock, &conn->connset->fd_write);
+			else
+				FD_CLR(conn->sock, &conn->connset->fd_write);
+		}
 
-		/* The current list */
-		conn->connset_l = new_l;
+		logline(log_DEBUG_,
+			CONN_ID " currently on list: %s",
+			conn_id(conn),
+			connset_list(conn->connset, conn->connset_l));
+
+		/* Stay on ready when already there, go active, or go inactive otherwise */
+		new_l = events != CONN_POLLNONE ?
+				(conn->connset_l == &conn->connset->ready ?
+				  &conn->connset->ready : &conn->connset->active) :
+				&conn->connset->inactive;
+
+		logline(log_DEBUG_,
+			CONN_ID " new list: %s",
+			conn_id(conn),
+			connset_list(conn->connset, new_l));
+
+		/* Different list? */
+		if (conn->connset_l != new_l) {
+
+			/* Remove it from the current list */
+			if (conn->connset_l != NULL) {
+				list_remove_l(conn->connset_l, &conn->node);
+			}
+
+			/* Add it to active or inactive */
+			list_addtail_l(new_l, &conn->node);
+
+			/* The current list */
+			conn->connset_l = new_l;
+		}
+
+		logline(log_DEBUG_,
+			CONN_ID " (non-handling done)",
+			conn_id(conn));
 	}
-
-	logline(log_DEBUG_, CONN_ID " (B)", conn_id(conn));
 
 	/* They match now */
 	conn->wntevents = events;
 
-	logline(log_DEBUG_, CONN_ID " events are now: %s %s",
+	logline(log_DEBUG_, CONN_ID " events are now: %s %s, list = %s",
 		conn_id(conn),
 		conn_wnt_in(conn)	? "IN" : ".",
-		conn_wnt_out(conn)	? "OUT" : ".");
+		conn_wnt_out(conn)	? "OUT" : ".",
+		connset_list(conn->connset, conn->connset_l));
 
+	/* Ensure that we track the hi_fd properly */
 	if (events != 0) {
-		/* It is an active socket */
-		logline(log_DEBUG_, CONN_ID " active socket", conn_id(conn));
-
 /* Windows does not use the highest fd param, it is there for compat only */
 #ifndef _WIN32
 		/* Make sure we have the right Highest FD */
@@ -1449,9 +1473,6 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 				conn_sock(conn));
 		}
 #endif
-	} else {
-		/* No events, thus do not check it */
-		logline(log_DEBUG_, CONN_ID " inactive socket", conn_id(conn));
 	}
 
 	connset_unlock(conn->connset);
