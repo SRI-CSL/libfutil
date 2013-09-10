@@ -1,5 +1,15 @@
 #include <libfutil/buf.h>
 
+void
+buf_lock(buf_t *buf) {
+	mutex_lock(buf->mutex);
+}
+
+void
+buf_unlock(buf_t *buf) {
+	mutex_unlock(buf->mutex);
+}
+
 bool
 buf_init(buf_t *buf) {
 	logline(log_DEBUG_, "(%p)", (void *)buf);
@@ -42,16 +52,13 @@ buf_destroy(buf_t *buf) {
 /* Empty the buffer, making it ready for re-use */
 void 
 buf_empty(buf_t *buf) {
-	mutex_lock(buf->mutex);
 	if (buf->buf)
 		memzero(buf->buf, buf->offset);
 	buf->offset = 0;
-	mutex_unlock(buf->mutex);
 }
 
 void
 buf_shift(buf_t *buf, unsigned int length) {
-	mutex_lock(buf->mutex);
 
 	/* Should never try to shift out more than what is left */
 	fassert(length <= buf->offset);
@@ -69,8 +76,6 @@ buf_shift(buf_t *buf, unsigned int length) {
 		buf->offset = left;
 		buf->buf[left] = '\0';
 	}
-
-	mutex_unlock(buf->mutex);
 }
 
 void
@@ -126,8 +131,6 @@ bool
 buf_putl(buf_t *buf, const char *txt, unsigned int len) {
 	bool ret = true;
 
-	mutex_lock(buf->mutex);
-
 	if (!buf_willfit(buf, len)) {
 		ret = false;
 	} else {
@@ -137,8 +140,6 @@ buf_putl(buf_t *buf, const char *txt, unsigned int len) {
 		/* The length that was added */
 		buf->offset += len;
 	}
-
-	mutex_unlock(buf->mutex);
 
 	return (ret);
 }
@@ -154,8 +155,6 @@ buf_vprintf(buf_t *buf, const char *fmt, va_list ap) {
 	bool		ret = true;
 	uint64_t	left;
 	va_list		aq;
-
-	mutex_lock(buf->mutex);
 
 	while (ret) {
 		left = buf->size - buf->offset;
@@ -190,12 +189,9 @@ buf_vprintf(buf_t *buf, const char *fmt, va_list ap) {
 		break;
 	}
 
-	mutex_unlock(buf->mutex);
-
 	return (ret);
 }
 
-/* Not locking mutex as buf_vprintf() does that */
 bool
 buf_printf(buf_t *buf, const char *fmt, ...) {
         va_list	ap;
@@ -207,6 +203,24 @@ buf_printf(buf_t *buf, const char *fmt, ...) {
 
 	return (ret);
 }
+
+/* Locked variant */
+bool
+buf_printfL(buf_t *buf, const char *fmt, ...) {
+        va_list	ap;
+	bool	ret;
+
+	buf_lock(buf);
+
+        va_start(ap, fmt);
+	ret = buf_vprintf(buf, fmt, ap);
+	va_end(ap);
+
+	buf_unlock(buf);
+
+	return (ret);
+}
+
 
 /* Simple char searcher that optionally breaks at ASCII-NUL '\0' */
 char *
@@ -223,5 +237,4 @@ buf_find(buf_t *buf, uint64_t offset, char chr, bool findnul) {
 	/* Not found */
 	return NULL;
 }
-
 

@@ -16,6 +16,8 @@ bool buf_init(buf_t *buf);
 void buf_destroy(buf_t *buf);
 
 void buf_empty(buf_t *buf);
+#define buf_emptyL(buf) buf_lock(buf); buf_empty(buf); buf_unlock(buf)
+
 void buf_shift(buf_t *buf, unsigned int length);
 
 void buf_added(buf_t *buf, unsigned int length);
@@ -27,8 +29,13 @@ bool buf_vprintf(buf_t *buf, const char *fmt, va_list ap)
 	ATTR_FORMAT(printf, 2, 0);
 bool buf_printf(buf_t *buf, const char *fmt, ...)
 	ATTR_FORMAT(printf, 2, 3);
+bool buf_printfL(buf_t *buf, const char *fmt, ...)
+	ATTR_FORMAT(printf, 2, 3);
 
 bool buf_minsize(buf_t *buf, unsigned int len);
+
+void buf_lock(buf_t *buf);
+void buf_unlock(buf_t *buf);
 
 #define buf_buffer(buff) ((buff)->buf)
 #define buf_bufend(buff) (&((buff)->buf)[(buff)->offset])

@@ -462,8 +462,10 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		}
 
 		/* Add headers to the raw headers */
+		buf_lock(&hcl->the_headers);
 		buf_putl(&hcl->the_headers, line, l);
 		buf_putl(&hcl->the_headers, "\r\n", 2);
+		buf_unlock(&hcl->the_headers);
 
 		/* Parse the header line */
 		misc_map(line, httpsrv_headers, (char *)&hcl->headers);
@@ -514,7 +516,7 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	memzero(&hcl->headers, sizeof hcl->headers);
 
 	/* Empty raw headers */
-	buf_empty(&hcl->the_headers);
+	buf_emptyL(&hcl->the_headers);
 
 	/* No arguments yet either */
 	hcl->headers.argc = 0;

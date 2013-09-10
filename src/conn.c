@@ -1282,9 +1282,9 @@ conn_close(conn_t *conn) {
 	conn->last_recv	= 0;
 
 	/* Nothing to send or receive */
-	buf_empty(&conn->recv);
-	buf_empty(&conn->send);
-	buf_empty(&conn->send_headers);
+	buf_emptyL(&conn->recv);
+	buf_emptyL(&conn->send);
+	buf_emptyL(&conn->send_headers);
 
 #ifdef CONN_SSL
 	if (conn->ssl) {
@@ -1587,6 +1587,7 @@ conn_ssl_bio_write(conn_t *conn) {
 		}
 	} else {
 		logline(log_DEBUG_, "Attempting SSL Read");
+		buf_lock(&conn->recv);
 		rc = SSL_read(conn->ssl, buf_bufend(&conn->recv),
 			      conn_buffer_left(conn));
 
@@ -1598,6 +1599,7 @@ conn_ssl_bio_write(conn_t *conn) {
 				"total = %" PRIu64,
 				conn_id(conn), rc, buf_cur(&conn->recv));
 		}
+		buf_unlock(&conn->recv);
 	}
 
 	if (rc <= 0) {
@@ -1643,10 +1645,14 @@ conn_ssl_bio(conn_t *conn) {
 	conn_ssl_bio_write(conn);
 	conn_ssl_bio_read(conn);
 
+	buf_lock(&conn->recv);
+	buf_lock(&conn->send);
 	logline(log_DEBUG_, CONN_ID " in: %u/%u, out: %u/%u",
 		conn_id(conn),
 		conn->ssl_in_len, (unsigned int)buf_cur(&conn->recv),
 		conn->ssl_out_len, (unsigned int)buf_cur(&conn->send));
+	buf_unlock(&conn->send);
+	buf_unlock(&conn->recv);
 }
 
 static long
@@ -1715,6 +1721,8 @@ conn_recvA(conn_t *conn) {
 	fassert(conn_is_valid(conn));
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
+	buf_lock(&conn->recv);
+
 #ifdef CONN_SSL
 	if (conn->ssl) {
 		len = sizeof conn->ssl_in - conn->ssl_in_len;
@@ -1745,10 +1753,13 @@ conn_recvA(conn_t *conn) {
 			CONN_ID " EOF (len=%" PRIsizet ")",
 			conn_id(conn), r);
 		/* Remote end closed socket */
+		buf_unlock(&conn->recv);
 		return (-ECONNRESET);
 	}
 
 	if (r < 0) {
+		buf_unlock(&conn->recv);
+
 		if (errno == EAGAIN) {
 			logline(log_DEBUG_,
 				CONN_ID " EAGAIN (len=%" PRIsizet ")",
@@ -1770,10 +1781,11 @@ conn_recvA(conn_t *conn) {
 		conn->ssl_in_len += r;
 
 		conn_ssl_bio(conn);
-
 	} else {
 #endif
-		uint64_t cur = buf_cur(&conn->recv);
+		uint64_t cur;
+
+		cur = buf_cur(&conn->recv);
 
 		buf_added(&conn->recv, r);
 
@@ -1795,7 +1807,10 @@ conn_recvA(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID " return %" PRIu64,
 		conn_id(conn), buf_cur(&conn->recv));
 
-	return (buf_cur(&conn->recv));
+	len = buf_cur(&conn->recv);
+
+	buf_unlock(&conn->recv);
+	return (len);
 }
 
 int
@@ -1819,6 +1834,8 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 
 	conn_lock(conn);
 
+	buf_lock(&conn->recv);
+
 	/* Forever and ever */
 	while (true) {
 
@@ -1838,6 +1855,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 						   (uint8_t *)
 						   buf_buffer(&conn->recv),
 						   buf_cur(&conn->recv));
+					buf_unlock(&conn->recv);
 					/* Not acceptable in lines */
 					return (-EINVAL);
 				}
@@ -1851,6 +1869,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 						"%" PRIu64 " > %u",
 						conn_id(conn),
 						len, buflen);
+					buf_unlock(&conn->recv);
 					conn_unlock(conn);
 					return (-ENOSPC);
 				}
@@ -1871,10 +1890,12 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 				/* Terminate it for sure */
 				buf[len] = '\0';
 
-				conn_unlock(conn);
 				logline(log_DEBUG_,
 					CONN_ID " line = %" PRIu64,
 					conn_id(conn), len);
+
+				buf_unlock(&conn->recv);
+				conn_unlock(conn);
 
 				return (len);
 			}
@@ -1903,17 +1924,22 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 			break;
 		} else if (i < 0) {
 			/* Connection got closed etc */
-			conn_unlock(conn);
 			logline(log_DEBUG_,
 				CONN_ID " closed (err = %d)",
 				conn_id(conn), i);
+
+			buf_unlock(&conn->recv);
+			conn_unlock(conn);
+
 			return (i);
 		}
 	}
 
+	logline(log_DEBUG_, CONN_ID " nothing", conn_id(conn));
+
+	buf_unlock(&conn->recv);
 	conn_unlock(conn);
 
-	logline(log_DEBUG_, CONN_ID " nothing", conn_id(conn));
 	return (0);
 }
 
@@ -2004,10 +2030,14 @@ conn_flushleft(conn_t *conn) {
 	uint64_t l;
 
 	conn_lock(conn);
+	buf_lock(&conn->send);
+	buf_lock(&conn->send_headers);
 
 	l = buf_cur(&conn->send) +
 	    buf_cur(&conn->send_headers);
 
+	buf_unlock(&conn->send_headers);
+	buf_unlock(&conn->send);
 	conn_unlock(conn);
 
 	return (l);
@@ -2025,12 +2055,16 @@ conn_flush(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
 	conn_lock(conn);
+	buf_lock(&conn->send);
+	buf_lock(&conn->send_headers);
 
 #ifdef CONN_SSL
 	if (!conn_ssl_flush(conn)) {
 		/* Still need to flush the SSL buffer */
 		/* Thus don't do anything else here yet */
 		logline(log_DEBUG_, CONN_ID " SSL flush needed", conn_id(conn));
+		buf_unlock(&conn->send_headers);
+		buf_unlock(&conn->send);
 		conn_unlock(conn);
 		return (true);
 	}
@@ -2042,6 +2076,8 @@ conn_flush(conn_t *conn) {
 
 	if (!conn_is_connected(conn) || conn_is_eofA(conn)) {
 		logline(log_DEBUG_, CONN_ID " not connected", conn_id(conn));
+		buf_unlock(&conn->send_headers);
+		buf_unlock(&conn->send);
 		conn_unlock(conn);
 		return (false);
 	}
@@ -2051,6 +2087,8 @@ conn_flush(conn_t *conn) {
 		logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
 		/* Nothing to flush thus continue polling for incoming */
 		conn_eventsA(conn, CONN_POLLIN);
+		buf_unlock(&conn->send_headers);
+		buf_unlock(&conn->send);
 		conn_unlock(conn);
 		return (true);
 	}
@@ -2173,6 +2211,8 @@ conn_flush(conn_t *conn) {
 	if (r <= -1) {
 		logline(log_NOTICE_, CONN_ID " Flushing error = %" PRIsizet,
 			conn_id(conn), r);
+		buf_unlock(&conn->send_headers);
+		buf_unlock(&conn->send);
 		conn_unlock(conn);
 		return (false);
 	}
@@ -2218,36 +2258,45 @@ conn_flush(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID " left %" PRIu64,
 		conn_id(conn), buf_cur(&conn->send));
 
+	buf_unlock(&conn->send_headers);
+	buf_unlock(&conn->send);
 	conn_unlock(conn);
 	return (true);
 }
 
-/* Not locking mutex as buf handles that */
 /* Callers might have locked the conn mutex */
 bool
 conn_addheaders(conn_t *conn, const char *txt) {
-	return (buf_put(&conn->send_headers, txt));
+	bool ret;
+
+	buf_lock(&conn->send_headers);
+	ret = buf_put(&conn->send_headers, txt);
+	buf_unlock(&conn->send_headers);
+
+	return (ret);
 }
 
-/* Not locking mutex as buf handles that */
 /* Callers might have locked the conn mutex */
 bool
 conn_addheader(conn_t *conn, const char *txt) {
 	bool ret;
 
+	buf_lock(&conn->send_headers);
 	ret = buf_put(&conn->send_headers, txt);
 	if (ret) ret = buf_put(&conn->send_headers, "\r\n");
+	buf_unlock(&conn->send_headers);
 
 	return (ret);
 }
 
-/* Not locking mutex as buf handles that */
 /* Callers might have locked the conn mutex */
 bool
 conn_addheaderf(conn_t *conn, const char *fmt, ...) {
         va_list		ap;
 	bool		ret;
 	uint64_t	cur;
+
+	buf_lock(&conn->send_headers);
 
         va_start(ap, fmt);
 
@@ -2262,6 +2311,8 @@ conn_addheaderf(conn_t *conn, const char *fmt, ...) {
 
 	va_end(ap);
 
+	buf_unlock(&conn->send_headers);
+
 	return (ret);
 }
 
@@ -2274,6 +2325,8 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 		return (true);
 
 	conn_lock(conn);
+	buf_lock(&conn->send);
+	buf_lock(&conn->send_headers);
 
 	cur = buf_cur(&conn->send);
 	ret = buf_putl(&conn->send, txt, len);
@@ -2291,6 +2344,8 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 		}
 	}
 
+	buf_unlock(&conn->send_headers);
+	buf_unlock(&conn->send);
 	conn_unlock(conn);
 
 	return (ret);
@@ -2345,6 +2400,8 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 	fassert(conn_is_valid(conn));
 
 	conn_lock(conn);
+	buf_lock(&conn->send);
+	buf_lock(&conn->send_headers);
 
 	cur = buf_cur(&conn->send);
 	ret = buf_vprintf(&conn->send, fmt, ap);
@@ -2362,7 +2419,10 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 		}
 	}
 
+	buf_unlock(&conn->send_headers);
+	buf_unlock(&conn->send);
 	conn_unlock(conn);
+
 	return (ret);
 }
 
