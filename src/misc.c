@@ -65,13 +65,13 @@ log_setfunc(logfunc_f func) {
 
 void
 logitVA(unsigned int level, const char *file, unsigned int line, const char *caller,
-        const char *format, va_list ap) ATTR_FORMAT(printf, 5, 0);
+	const char *format, va_list ap) ATTR_FORMAT(printf, 5, 0);
 void
 logitVA(unsigned int level, const char UNUSED *file,
 	unsigned int UNUSED line, const char *caller,
-        const char *format, va_list ap)
+	const char *format, va_list ap)
 {
-	const char      *name = getprioname(level);
+	const char	*name = getprioname(level);
 	uint64_t	id = getthisthreadid();
 	int64_t		maxlogsize = (100 * 1024 * 1024);
 	struct stat	st;
@@ -351,10 +351,10 @@ uint64_t gettime(void) {
 	return (mts.tv_sec);
 #else
 #ifndef _WIN32
-        struct timespec	ts;
+	struct timespec	ts;
 
-        clock_gettime(CLOCK_REALTIME, &ts);
-        return (ts.tv_sec);
+	clock_gettime(CLOCK_REALTIME, &ts);
+	return (ts.tv_sec);
 #else /* _WIN32 */
 	LARGE_INTEGER	t;
 	FILETIME	f;
@@ -650,44 +650,44 @@ base64url_encode_binary(char *encoded, const unsigned char *str, unsigned int le
 
 static const unsigned char pr2six[256] =
 {
-    /* ASCII table */
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 62, 64, 64, 64, 63,
-    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 64, 64, 64, 64, 64,
-    64,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 64, 64, 64, 64, 64,
-    64, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64
+	/* ASCII table */
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 62, 64, 64, 64, 63,
+	52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 64, 64, 64, 64, 64,
+	64,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+	15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 64, 64, 64, 64, 64,
+	64, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+	41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64
 };
 
 static const unsigned char pr2six_url[256] =
 {
-    /* ASCII table */
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 62, 64, 64,
-    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 64, 64, 64, 64, 64,
-    64,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 64, 64, 64, 64, 63,
-    64, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
-    64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64
+	/* ASCII table */
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 62, 64, 64,
+	52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64, 64, 64, 64, 64, 64,
+	64,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+	15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 64, 64, 64, 64, 63,
+	64, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+	41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64,
+	64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64
 };
 
 
@@ -695,17 +695,17 @@ unsigned int
 base64_decode_len_alpha(const char *bufcoded, const char unsigned *alpha);
 unsigned int
 base64_decode_len_alpha(const char *bufcoded, const char unsigned *alpha) {
-    int					nbytesdecoded;
-    register const unsigned char	*bufin;
-    register unsigned int		nprbytes;
+	int				nbytesdecoded;
+	register const unsigned char	*bufin;
+	register unsigned int		nprbytes;
 
-    bufin = (const unsigned char *)bufcoded;
-    while (alpha[*(bufin++)] <= 63);
+	bufin = (const unsigned char *)bufcoded;
+	while (alpha[*(bufin++)] <= 63);
 
-    nprbytes = (bufin - (const unsigned char *) bufcoded) - 1;
-    nbytesdecoded = (((int)nprbytes + 3) / 4) * 3;
+	nprbytes = (bufin - (const unsigned char *) bufcoded) - 1;
+	nbytesdecoded = (((int)nprbytes + 3) / 4) * 3;
 
-    return (nbytesdecoded + 1);
+	return (nbytesdecoded + 1);
 }
 
 unsigned int
@@ -786,22 +786,29 @@ base64_decode_binary(unsigned char *bufplain,
 
 unsigned int
 base64_decode(char *bufplain, const char *bufcoded) {
-    unsigned int len;
+	unsigned int len;
 
-    len = base64_decode_binary((unsigned char *)bufplain, bufcoded, pr2six);
-    bufplain[len] = '\0';
+	len = base64_decode_binary(
+		(unsigned char *)bufplain,
+		bufcoded,
+		pr2six);
 
-    return (len);
+	bufplain[len] = '\0';
+
+	return (len);
 }
 
 unsigned int
 base64url_decode(char *bufplain, const char *bufcoded) {
-    unsigned int len;
+	unsigned int len;
 
-    len = base64_decode_binary((unsigned char *)bufplain, bufcoded, pr2six_url);
-    bufplain[len] = '\0';
+	len = base64_decode_binary(
+		(unsigned char *)bufplain,
+		bufcoded,
+		pr2six_url);
+	bufplain[len] = '\0';
 
-    return (len);
+	return (len);
 }
 
 #define family_name(fm)					\
