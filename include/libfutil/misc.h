@@ -295,7 +295,8 @@ const char *inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt);
 #include "rwl.h"
 #include "stack.h"
 
-uint64_t gettime(void);
+#define gettime() gettimes(NULL)
+uint64_t gettimes(uint64_t *msec);
 
 #ifndef _WIN32
 void set_timeout(struct timespec *timeout, unsigned int nsec);

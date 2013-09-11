@@ -72,7 +72,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 	const char *format, va_list ap)
 {
 	const char	*name = getprioname(level);
-	uint64_t	id = getthisthreadid();
+	uint64_t	id = getthisthreadid(), msec;
 	int64_t		maxlogsize = (100 * 1024 * 1024);
 	struct stat	st;
 	time_t		tm;
@@ -108,12 +108,12 @@ logitVA(unsigned int level, const char UNUSED *file,
 #endif
 	} else {
 		/* Include the time in the log */
-		tm = gettime();
+		tm = gettimes(&msec);
 		localtime_r(&tm, &teem);
 
 		fprintf(l_log_output,
 #ifdef SAFDEF_LOG_LONG
-			"%4u-%02u-%02u %02u:%02u:%02u %s "
+			"%4u-%02u-%02u %02u:%02u:%02u.%03" PRIu64 " %s "
 #else
 			"%" PRIu64 " "
 #endif
@@ -122,7 +122,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 			" %s() ",
 #ifdef SAFDEF_LOG_LONG
 			teem.tm_year+1900, teem.tm_mon+1, teem.tm_mday,
-			teem.tm_hour, teem.tm_min, teem.tm_sec,
+			teem.tm_hour, teem.tm_min, teem.tm_sec, msec,
 			l_log_name ? l_log_name : "daemon",
 #else
 			tm,
@@ -339,7 +339,7 @@ inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt) {
 	return (ret);
 }
 
-uint64_t gettime(void) {
+uint64_t gettimes(uint64_t *msec) {
 #ifdef __MACH__
 	/* OS X does not have clock_gettime, use clock_get_time */
 	clock_serv_t	cclock;
@@ -348,24 +348,50 @@ uint64_t gettime(void) {
 	host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
 	clock_get_time(cclock, &mts);
 	mach_port_deallocate(mach_task_self(), cclock);
+
+	if (msec != NULL) {
+		/* nsec -> msec */
+		*msec = mts.tv_nsec / (1000*1000);
+	}
+
 	return (mts.tv_sec);
 #else
 #ifndef _WIN32
 	struct timespec	ts;
 
 	clock_gettime(CLOCK_REALTIME, &ts);
+	if (msec != NULL) {
+		/* nsec -> msec */
+		*msec = ts.tv_nsec / (1000*1000);
+	}
 	return (ts.tv_sec);
 #else /* _WIN32 */
+	/* Note: Windows stores time in 'intervals of 100 nanoseconds' */
 	LARGE_INTEGER	t;
 	FILETIME	f;
-	uint64_t	ret;
+	uint64_t	ret, m;
 
 	GetSystemTimeAsFileTime(&f);
 	t.LowPart = f.dwLowDateTime;
 	t.HighPart = f.dwHighDateTime;
 	ret = t.QuadPart;
-	ret -= 116444736000000000LL; /* Convert from file time to UNIX epoch time. */
-	ret /= 10000000; /* From 100 nano seconds (10^-7) to seconds */
+
+	/* Convert from file time to UNIX epoch time. */
+	ret -= 116444736000000000LL;
+
+	/* Keep this around for a bit */
+	m = ret;
+
+	ret /= (10*1000*1000); /* From 100 nano seconds (10^-7) to seconds */
+
+	/* Fill in the microseconds if wanted */
+	if (msec != NULL) {
+		/* Remove the seconds */
+		m -= (ret * 10*1000*1000);
+
+		/* 100 nsec -> msec */
+		*msec = m / (10*1000);
+	}
 
 	return (ret);
 #endif /* _WIN32 */
@@ -394,13 +420,13 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 	gettimeofday(&now, NULL);
 	memzero(timeout, sizeof *timeout);
 	timeout->tv_sec = now.tv_sec + msec / 1000;
-	timeout->tv_nsec = (now.tv_usec * 1000) + (msec % 1000) * 1000000;
+	timeout->tv_nsec = (now.tv_usec * 1000) + (msec % 1000) * (1000*1000);
 #endif
 	fassert(timeout->tv_nsec >= 0);
 
-	while (timeout->tv_nsec > 1000000000) {
+	while (timeout->tv_nsec > (1000*1000*1000)) {
 		timeout->tv_sec++;
-		timeout->tv_nsec -= 1000000000;
+		timeout->tv_nsec -= (1000*1000*1000);
 	}
 }
 #endif
