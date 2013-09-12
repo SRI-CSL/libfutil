@@ -129,8 +129,14 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	bool		done;
 
 	logline(log_DEBUG_,
-		HCL_ID " " CONN_ID,
-		hcl->id, conn_id(&hcl->conn));
+		HCL_ID " " CONN_ID ", "
+		"skip: %" PRIu64 ", "
+		"fwdb:%" PRIu64 ", "
+		"read:%" PRIu64,
+		hcl->id, conn_id(&hcl->conn),
+		hcl->skipbody_len,
+		hcl->bodyfwd_len,
+		hcl->readbody_len);
 
 	/* As long as we got lines parse them */
 	while (true) {
@@ -177,8 +183,12 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 					hcl->bodyfwd_len);
 
 			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID " BodyFwd %" PRIu64,
-				hcl->id, conn_id(&hcl->conn), len);
+				HCL_ID " " CONN_ID "->" CONN_ID
+				" BodyFwd %" PRIu64,
+				hcl->id,
+				conn_id(&hcl->conn),
+				conn_id(&hcl->bodyfwd->conn),
+				len);
 
 			if (len == 0) {
 				/* Try to get more */
@@ -207,19 +217,34 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			/* Done or something went wrong? */
 			if (hcl->bodyfwd_len == 0 || len == 0) {
 				logline(log_DEBUG_,
-					HCL_ID " " CONN_ID " BodyFwd Done",
-					hcl->id, conn_id(&hcl->conn));
+					HCL_ID " " CONN_ID "->" CONN_ID
+					" BodyFwd Done",
+					hcl->id,
+					conn_id(&hcl->conn),
+					conn_id(&hcl->bodyfwd->conn));
 
-				/* Do events again */
-				httpsrv_speak(hcl->bodyfwd);
+				connset_setup_handling(&hcl->bodyfwd->conn);
 
 				/* Inform the caller */
 				fassert(hcl->hs->bodyfwd_done);
-				hcl->hs->bodyfwd_done(hcl, hcl->user);
+				hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
 
-				/* Done with this */
+				assert(hcl->bodyfwd);
+
+				logline(log_DEBUG_,
+					HCL_ID " " CONN_ID "->" CONN_ID
+					" BodyFwd Flush",
+					hcl->id,
+					conn_id(&hcl->conn),
+					conn_id(&hcl->bodyfwd->conn));
+
+				httpsrv_done(hcl->bodyfwd);
+				connset_handled(&hcl->bodyfwd->conn);
+
 				hcl->bodyfwd = NULL;
 				hcl->bodyfwd_len = 0;
+
+				httpsrv_done(hcl);
 
 				/* Done with this for now */
 				return;
@@ -875,8 +900,6 @@ httpsrv_newcl(httpsrv_t *hs) {
 static void
 httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	httpsrv_client_t	*hcl;
-	char			address[256];
-	uint32_t		proto, port;
 	bool			r;
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
@@ -898,18 +921,15 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 		return;
 	}
 
-	/* Who is it on our side? */
-	conn_getinfo(&hcl->conn, true, address, sizeof address, &proto, &port);
-
-	/* We expect to receive something from it */
-	conn_events(&hcl->conn, CONN_POLLIN);
-
 	/* Register this session in our sessions list */
 	list_addtail_l(&hs->sessions, &hcl->node);
 
 	/* User supplied function */
 	if (hcl->hs->accept)
 		hcl->hs->accept(hcl, hcl->hs->user);
+
+	/* We expect to receive something from it */
+	conn_events(&hcl->conn, CONN_POLLIN);
 
 	return;
 }
@@ -948,6 +968,10 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 			hcl->id, conn_id(&hcl->conn));
 		httpsrv_handle_http(hcl);
 	}
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " done",
+		hcl->id, conn_id(&hcl->conn));
 }
 
 /* This just polls sockets and puts them in the right active queue */
@@ -975,20 +999,6 @@ httpsrv_poller_thread(void *context) {
 }
 
 void
-httpsrv_silence(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, HCL_ID, hcl->id);
-	conn_events(&hcl->conn, CONN_POLLNONE);
-	logline(log_DEBUG_, HCL_ID " end", hcl->id);
-}
-
-void
-httpsrv_speak(httpsrv_client_t *hcl) {
-	logline(log_DEBUG_, HCL_ID, hcl->id);
-	conn_events(&hcl->conn, CONN_POLLIN | CONN_POLLOUT);
-	logline(log_DEBUG_, HCL_ID " end", hcl->id);
-}
-
-void
 httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
 	logline(log_DEBUG_,
 		HCL_ID " to " HCL_ID " %" PRIu64 " bytes",
@@ -1000,9 +1010,6 @@ httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout) {
 	/* Make it forward the body from hin to hout */
 	hin->bodyfwd = hout;
 	hin->bodyfwd_len = hin->headers.content_length;
-
-	/* Silence the output */
-	httpsrv_silence(hout);
 
 	/* Directly suck the existing buffer empty */
 	httpsrv_handle_http(hin);
@@ -1058,11 +1065,17 @@ httpsrv_worker_thread(void *context) {
 
 			/* Receive incoming data */
 			if (conn_poll_in(conn)) {
+				logline(log_DEBUG_,
+					HCL_ID " " CONN_ID " receiving",
+					hcl->id, conn_id(&hcl->conn));
 				httpsrv_receive(hcl, conn);
 			}
 
 			/* Output data to sockets that need it */
 			if (conn_poll_out(conn)) {
+				logline(log_DEBUG_,
+					HCL_ID " " CONN_ID " flushing",
+					hcl->id, conn_id(&hcl->conn));
 				conn_flush(&hcl->conn);
 			}
 
@@ -1073,7 +1086,7 @@ httpsrv_worker_thread(void *context) {
 					hcl->id, conn_id(conn));
 
 				/* Handling needs to be done */
-				connset_handled_ready(conn);
+				connset_handled(conn);
 
 				if (httpsrv_client_close(hcl, false)) {
 					/* It really is gone */
@@ -1096,7 +1109,8 @@ httpsrv_worker_thread(void *context) {
 			logline(log_DEBUG_,
 				CONN_ID " processed",
 				conn_id(conn));
-			connset_handled_ready(conn);
+
+			connset_handled(conn);
 		}
 	}
 
@@ -1259,7 +1273,7 @@ httpsrv_init(	httpsrv_t *hs,
 		httpsrv_f f_accept,
 		httpsrv_line_f f_header,
 		httpsrv_done_f f_handle,
-		httpsrv_f f_bodyfwd_done,
+		httpsrv_bfwd_f f_bodyfwd_done,
 		httpsrv_f f_done,
 		httpsrv_f f_close)
 {

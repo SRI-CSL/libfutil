@@ -51,6 +51,16 @@ connset_unlock(connset_t *cs) {
 	mutex_unlock(cs->mutex);
 }
 
+const char *connset_list(connset_t *cs, hlist_t *l);
+const char *connset_list(connset_t *cs, hlist_t *l) {
+	return	(l == &cs->ready	? "ready" :
+		(l == &cs->active	? "active" :
+		(l == &cs->inactive	? "inactive" :
+		(l == &cs->handling	? "handling" :
+		(l == NULL		? "<none>" :
+					  "<unknown>")))));
+}
+
 void
 conn_lock(conn_t *conn);
 void
@@ -851,7 +861,7 @@ conn_destroy(conn_t *conn) {
 		/* XXX: should be 'inactive' as that is what conn_close() causes */
 		list_remove_l(conn->connset_l, &conn->node);
 
-		/* No more conset here */
+		/* No more connset here */
 		conn->connset = NULL;
 		conn->connset_l = NULL;
 	}
@@ -940,6 +950,31 @@ connset_destroy(connset_t *cs) {
 	mutex_destroy(cs->mutex);
 }
 
+#ifdef POLLDEBUG
+void
+connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w);
+void
+connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w) {
+	conn_t		*conn, *conn_next;
+	
+	list_lock(l);
+	list_for(l, conn, conn_next, conn_t *) {
+		logline(log_DEBUG_,
+			"  %s: " CONN_ID " " SOCK_ID
+			", (i:%s/%s o:%s/%s) out: %" PRIu64,
+			type,
+			conn_id(conn),
+			conn_sock(conn),
+			yesno(conn_wnt_in(conn)),
+			yesno(FD_ISSET(conn->sock, fd_r)),
+			yesno(conn_wnt_out(conn)),
+			yesno(FD_ISSET(conn->sock, fd_w)),
+			conn_flushleft(conn));
+	}
+	list_unlock(l);
+}
+#endif
+
 int
 connset_poll(connset_t *cs) {
 	struct timeval	timeout;
@@ -968,6 +1003,11 @@ connset_poll(connset_t *cs) {
 			if (FD_ISSET(i, &fd_w))
 				logline(log_DEBUG_, "   write: " SOCK_ID, i);
 		}
+
+		connset_poll_list("act", &cs->active,	&fd_r, &fd_w);
+		connset_poll_list("rdy", &cs->ready,	&fd_r, &fd_w);
+		connset_poll_list("ina", &cs->inactive, &fd_r, &fd_w);
+		connset_poll_list("hdl", &cs->handling, &fd_r, &fd_w);
 #endif
 
 		connset_unlock(cs);
@@ -978,8 +1018,13 @@ connset_poll(connset_t *cs) {
 		 * to let the main program check if it needs to abort etc
 		 * note that this also gives the chance to add new FDs
 		 */
+#ifdef POLLDEBUG
+		timeout.tv_sec = 1;
+		timeout.tv_usec = 0;
+#else
 		timeout.tv_sec = 0;
 		timeout.tv_usec = (100 * 1000);
+#endif
 
 		thread_setstate(thread_state_select);
 		errno = 0;
@@ -1108,7 +1153,7 @@ connset_poll(connset_t *cs) {
 					       &conn->node);
 
 				logline(log_DEBUG_,
-					CONN_ID " Added to ready list",
+					CONN_ID " Added to list: ready",
 					conn_id(conn));
 			}
 		}
@@ -1124,6 +1169,8 @@ connset_poll(connset_t *cs) {
 				if (FD_ISSET(i, &fd_w))
 					logline(log_DEBUG_, "   write: " SOCK_ID, i);
 			}
+
+			logline(log_DEBUG_, "----------------");
 			fassert(false);
 		}
 #endif
@@ -1136,21 +1183,22 @@ connset_poll(connset_t *cs) {
 }
 
 /*
- * For conn_get_ready() and conn_get_one_ready()
- * This 'circumvents' conn_eventA()
- * Finalize this with 'handled_ready'
+ * For conn_get_ready() and conn_get_one_ready() and suggested
+ * around conn_accept()
+ *
+ * This avoids conn_eventA() list swapping when the list is handling thus
+ * avoids connections to go onto the active list and thus being picked up
+ * by another thread.
+ *
+ * Finalize this with connset_handled()
  *
  * This puts a connection on the handling list.
  */
 void
-connset_setup_ready(conn_t *conn);
+connset_setup_handlingL(conn_t *conn);
 void
-connset_setup_ready(conn_t *conn) {
+connset_setup_handlingL(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID, conn_id(conn));
-
-	/* Lock her up */
-	conn_lock(conn);
-	connset_lock(conn->connset);
 
 	/* Clear the bits so that select() ignores them */
 	if (conn->wntevents & CONN_POLLIN) {
@@ -1162,14 +1210,50 @@ connset_setup_ready(conn_t *conn) {
 	}
 
 	/*
-	 * We took conn from the ready list
-	 * add it to handling list
+	 * We took conn from a list add it to handling list
 	 */
 	assert(conn->connset_l == &conn->connset->ready);
-	list_addtail_l(&conn->connset->handling, &conn->node);
 	conn->connset_l = &conn->connset->handling;
+	list_addtail_l(&conn->connset->handling, &conn->node);
 
-	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
+	logline(log_DEBUG_, 
+		CONN_ID " done, list: handling",
+		conn_id(conn));
+}
+
+void
+connset_setup_handlingA(conn_t *conn);
+void
+connset_setup_handlingA(conn_t *conn) {
+	/* Lock her up */
+	conn_lock(conn);
+	connset_lock(conn->connset);
+
+	/* Locked, make magic happen */
+	connset_setup_handlingL(conn);
+
+	/* Release her */
+	connset_unlock(conn->connset);
+	conn_unlock(conn);
+}
+
+void
+connset_setup_handling(conn_t *conn) {
+	logline(log_DEBUG_, CONN_ID, conn_id(conn));
+
+	/* Lock her up */
+	conn_lock(conn);
+	connset_lock(conn->connset);
+
+	/* Should not be on ready or handling lists */
+	assert(conn->connset_l != &conn->connset->ready);
+	assert(conn->connset_l != &conn->connset->handling);
+	list_remove_l(conn->connset_l, &conn->node);
+
+	/* Fake that it was on the ready list */
+	conn->connset_l = &conn->connset->ready;
+
+	connset_setup_handlingL(conn);
 
 	/* Release her */
 	connset_unlock(conn->connset);
@@ -1182,7 +1266,7 @@ connset_get_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_getnext(&cs->ready);
 	if (conn != NULL) {
-		connset_setup_ready(conn);
+		connset_setup_handlingA(conn);
 	}
 
 	return (conn);
@@ -1194,15 +1278,15 @@ connset_get_one_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_pop(&cs->ready);
 	if (conn != NULL) {
-		connset_setup_ready(conn);
+		connset_setup_handlingA(conn);
 	}
 
 	return (conn);
 }
 
-/* Paired with a conn_get_{one_}ready and thus conn_handle_ready() */
+/* Paired with a conn_get_{one_}ready and thus connset_setup_handling() */
 void
-connset_handled_ready(conn_t *conn) {
+connset_handled(conn_t *conn) {
 	hlist_t *l;
 
 	/* Has to be one some list */
@@ -1213,6 +1297,11 @@ connset_handled_ready(conn_t *conn) {
 	/* Lock it */
 	conn_lock(conn);
 	connset_lock(conn->connset);
+
+	logline(log_DEBUG_,
+		CONN_ID " list: %s",
+		conn_id(conn),
+		connset_list(conn->connset, conn->connset_l));
 
 	/* Should still be on the handling list */
 	assert(conn->connset_l == &conn->connset->handling);
@@ -1238,7 +1327,10 @@ connset_handled_ready(conn_t *conn) {
 	conn->connset_l = l;
 	list_addtail_l(l, &conn->node);
 
-	logline(log_DEBUG_, CONN_ID " done", conn_id(conn));
+	logline(log_DEBUG_,
+		CONN_ID " done, list: %s",
+		conn_id(conn),
+		connset_list(conn->connset, conn->connset_l));
 
 	/* Release it */
 	connset_unlock(conn->connset);
@@ -1347,16 +1439,6 @@ conn_is_eof(conn_t *conn) {
 	return (ret);
 }
 
-const char *connset_list(connset_t *cs, hlist_t *l);
-const char *connset_list(connset_t *cs, hlist_t *l) {
-	return	(l == &cs->ready	? "ready" :
-		(l == &cs->active	? "active" :
-		(l == &cs->inactive	? "inactive" :
-		(l == &cs->handling	? "handling" :
-		(l == NULL		? "<none>" :
-					  "<unknown>")))));
-}
-
 /* What do we want to hear? (Mutex locked by caller) */
 void
 conn_eventsA(conn_t *conn, uint16_t events) {
@@ -1375,7 +1457,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
         if (conn->wntevents == events)
 		return;
 
-	/* Lock her up up */
+	/* Lock her up */
 	connset_lock(conn->connset);
 
 	/* When handling, don't change anything except what we want (after if) */
@@ -1446,7 +1528,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 	/* They match now */
 	conn->wntevents = events;
 
-	logline(log_DEBUG_, CONN_ID " events are now: %s %s, list = %s",
+	logline(log_DEBUG_, CONN_ID " events are now: %s %s, list: %s",
 		conn_id(conn),
 		conn_wnt_in(conn)	? "IN" : ".",
 		conn_wnt_out(conn)	? "OUT" : ".",
@@ -2052,7 +2134,10 @@ conn_flush(conn_t *conn) {
 	ssize_t		r;
 	uint64_t	len, len_b, len_h, wlen;
 
-	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
+	logline(log_DEBUG_,
+		CONN_ID " list: %s",
+		conn_id(conn),
+		connset_list(conn->connset, conn->connset_l));
 
 	conn_lock(conn);
 	buf_lock(&conn->send);
@@ -2337,11 +2422,6 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 		dumppacket(	LOG_DEBUG,
 				(uint8_t *)&buf_buffer(&conn->send)[cur],
 				buf_cur(&conn->send) - cur);
-
-		/* Only autoflush when we don't have headers set */
-		if (buf_cur(&conn->send_headers) == 0) {
-			conn_eventsA(conn, CONN_POLLIN | CONN_POLLOUT);
-		}
 	}
 
 	buf_unlock(&conn->send_headers);
@@ -2412,11 +2492,6 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 		dumppacket(	LOG_DEBUG,
 				(uint8_t *)&buf_buffer(&conn->send)[cur],
 				buf_cur(&conn->send) - cur);
-
-		/* Only autoflush when we don't have headers set */
-		if (buf_cur(&conn->send_headers) == 0) {
-			conn_eventsA(conn, CONN_POLLIN | CONN_POLLOUT);
-		}
 	}
 
 	buf_unlock(&conn->send_headers);
@@ -2560,11 +2635,14 @@ conn_create_listen(connset_t *connset,
 					/* Lock it up */
 					conn_lock(conn);
 
+					/* The connset this belongs to */
 					conn_set_connset(conn, connset);
-					conn_eventsA(conn, CONN_POLLIN);
 
 					/* Mark it as listening */
 					conn_set_state(conn, CONN_LISTENING);
+
+					/* We expect inbound connections  */
+					conn_eventsA(conn, CONN_POLLIN);
 
 					/* Release it */
 					conn_unlock(conn);
@@ -2746,6 +2824,7 @@ conn_connect(conn_t *conn, const char *host,
 	return (conn_create_connection(conn, host, protocol, port, NULL));
 }
 
+/* Note that this does not set any events, the caller has to do that */
 bool
 conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 	char		address[256];
@@ -2796,9 +2875,6 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 	conn->protocol	= lconn->protocol;
 	conn->port	= lconn->port;
 	conn->clientdata= clientdata;
-
-	/* We want to know all about this socket */
-	conn_eventsA(conn, CONN_POLLIN | CONN_POLLOUT);
 
 	conn_unlock(conn);
 
