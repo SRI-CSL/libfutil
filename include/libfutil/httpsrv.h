@@ -55,9 +55,10 @@ typedef struct {
 } httpsrv_headers_t;
 
 typedef struct httpsrv_client httpsrv_client_t;
-typedef void (*httpsrv_f)(httpsrv_client_t *cl, void *user);
-typedef bool (*httpsrv_done_f)(httpsrv_client_t *cl, void *user);
-typedef void (*httpsrv_line_f)(httpsrv_client_t *cl, void *user, char *line);
+typedef void (*httpsrv_f)(httpsrv_client_t *hcl, void *user);
+typedef bool (*httpsrv_done_f)(httpsrv_client_t *hcl, void *user);
+typedef void (*httpsrv_line_f)(httpsrv_client_t *hcl, void *user, char *line);
+typedef void (*httpsrv_bfwd_f)(httpsrv_client_t *hcl, httpsrv_client_t *fhcl, void *user);
 
 /* All private */
 typedef struct {
@@ -85,7 +86,7 @@ typedef struct {
 	httpsrv_done_f		handle;
 
 	/* BodyFWDdone     - called when BodyFwd is complete */
-	httpsrv_f		bodyfwd_done;
+	httpsrv_bfwd_f		bodyfwd_done;
 
 	/* Done function   - called when request is done */
 	httpsrv_f		done;
@@ -131,7 +132,7 @@ bool httpsrv_init(httpsrv_t *hs, void *user,
 			httpsrv_f accept,
 			httpsrv_line_f header,
 			httpsrv_done_f handle,
-			httpsrv_f bodyfwd_done,
+			httpsrv_bfwd_f bodyfwd_done,
 			httpsrv_f done,
 			httpsrv_f close);
 bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned int numworkers);

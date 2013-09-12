@@ -201,7 +201,8 @@ int connset_poll(connset_t *cs);
 
 conn_t *connset_get_one_ready(connset_t *cs);
 conn_t *connset_get_ready(connset_t *cs);
-void connset_handled_ready(conn_t *conn);
+void connset_setup_handling(conn_t *conn);
+void connset_handled(conn_t *conn);
 
 /* connset_poll() returns: < 0: error, 0: timeout, >0: ready sockets */
 
