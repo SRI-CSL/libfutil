@@ -143,6 +143,10 @@ httpsrv_handle_http_skipbody(httpsrv_client_t *hcl) {
 	uint64_t	len;
 	int		i;
 
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " SkipBody l:%" PRIu64,
+		hcl->id, conn_id(&hcl->conn), hcl->skipbody_len);
+
 	/* How much do we have? */
 	len = conn_buffer_cur(&hcl->conn);
 
@@ -163,14 +167,14 @@ httpsrv_handle_http_skipbody(httpsrv_client_t *hcl) {
 		len = hcl->skipbody_len;
 	}
 
-	logline(log_DEBUG_,
-		HCL_ID " " CONN_ID " SkipBody %" PRIu64,
-		hcl->id, conn_id(&hcl->conn), len);
-
 	/* Skip it */
 	conn_buffer_shift(&hcl->conn, len);
 
 	hcl->skipbody_len -= len;
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " SkipBody l:%" PRIu64 " d:%" PRIu64,
+		hcl->id, conn_id(&hcl->conn), hcl->skipbody_len, len);
 
 	/* Try some more */
 	return (false);
@@ -213,8 +217,7 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 
 	/*
 	 * Allow partial body content reads
-	 * if that happens at _done() time we
-	 * read in the remainder that is this
+	 * by keeping track of what is left of the body
 	 */
 	fassert(len <= hcl->headers.content_length);
 	hcl->headers.content_length -= len;
@@ -304,6 +307,13 @@ httpsrv_handle_http_readbody(httpsrv_client_t *hcl) {
 	/* Some more gone, some more there */
 	hcl->readbody_len -= len;
 	hcl->readbody_off += len;
+
+	/*
+	 * Allow partial body content reads
+	 * by keeping track of what is left of the body
+	 */
+	fassert(len <= hcl->headers.content_length);
+	hcl->headers.content_length -= len;
 
 	/* Complete? Call handle function */
 	if (hcl->readbody_len == 0) {
