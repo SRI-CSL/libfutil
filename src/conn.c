@@ -1182,6 +1182,16 @@ connset_poll(connset_t *cs) {
 	return (0);
 }
 
+void
+conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
+	/* should not be set multiple times */
+	assert(conn->posthandle_f == NULL);
+
+	/* The function and user data */
+	conn->posthandle_f = f;
+	conn->posthandle_u = user;
+}
+
 /*
  * For conn_get_ready() and conn_get_one_ready() and suggested
  * around conn_accept()
@@ -1287,7 +1297,7 @@ connset_get_one_ready(connset_t *cs) {
 /* Paired with a conn_get_{one_}ready and thus connset_setup_handling() */
 void
 connset_handled(conn_t *conn) {
-	hlist_t *l;
+	hlist_t			*l;
 
 	/* Has to be one some list */
 	fassert(conn->connset_l != NULL);
@@ -1331,6 +1341,12 @@ connset_handled(conn_t *conn) {
 		CONN_ID " done, list: %s",
 		conn_id(conn),
 		connset_list(conn->connset, conn->connset_l));
+
+	if (conn->posthandle_f) {
+		conn->posthandle_f(conn, conn->posthandle_u);
+		conn->posthandle_f = NULL;
+		conn->posthandle_u = NULL;
+	}
 
 	/* Release it */
 	connset_unlock(conn->connset);

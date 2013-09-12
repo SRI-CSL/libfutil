@@ -37,12 +37,16 @@ typedef enum {
 	CONN_CONNECTED
 } connstate_t;
 
+typedef struct conn conn_t;
+
 /* Hook called when flushing() which helps for debugging and testing */
 typedef int (*conn_flush_hook)(void *data, unsigned int id, bool isheader,
 				const char *buf, uint64_t length);
 
+typedef void (*conn_posthandle_f)(conn_t *conn, void *user);
+
 /* Per-connection context */
-typedef struct {
+struct conn {
 	hnode_t			node;		/* List node */
 	mutex_t			mutex;		/* Mutex */
 	socket_t		sock;		/* Socket */
@@ -69,6 +73,9 @@ typedef struct {
 	uint64_t		real_contentlen;/* Real content length */
 	bool			add_contentlen;	/* Add Content-Length header? */
 
+	conn_posthandle_f	posthandle_f;	/* Post Handling function */
+	void			*posthandle_u;	/* User data */
+
 	/* OpenSSL */
 #ifdef CONN_SSL
 	BIO			*ssl_bio_in;	/* Binary In */
@@ -81,7 +88,7 @@ typedef struct {
 	char			ssl_out[16*1024]; /* SSL Output */
 	uint64_t		ssl_out_len;
 #endif
-} conn_t;
+};
 
 /* Always defined (CONN_SSL) */
 #ifdef CONN_SSL
@@ -203,6 +210,7 @@ conn_t *connset_get_one_ready(connset_t *cs);
 conn_t *connset_get_ready(connset_t *cs);
 void connset_setup_handling(conn_t *conn);
 void connset_handled(conn_t *conn);
+void conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user);
 
 /* connset_poll() returns: < 0: error, 0: timeout, >0: ready sockets */
 

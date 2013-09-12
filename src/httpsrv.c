@@ -57,6 +57,23 @@ httpsrv_set_userdata(httpsrv_client_t *hcl, void *user) {
 }
 
 void
+httpsrv_set_posthandle_hook(conn_t *conn, void *user);
+void
+httpsrv_set_posthandle_hook(conn_t *conn, void *user) {
+	httpsrv_client_t *hcl = (httpsrv_client_t *)user;
+
+	assert(conn == &hcl->conn);
+
+	hcl->posthandle(hcl);
+}
+
+void
+httpsrv_set_posthandle(httpsrv_client_t *hcl, httpsrv_sf f) {
+	hcl->posthandle = f;
+	conn_set_posthandle(&hcl->conn, httpsrv_set_posthandle_hook, hcl);
+}
+
+void
 httpsrv_close(httpsrv_client_t *hcl) {
 	logline(log_DEBUG_,
 		HCL_ID " " CONN_ID,
@@ -119,6 +136,198 @@ httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
 		hcl->hs->tail(hcl, hcl->user);
 }
 
+static bool
+httpsrv_handle_http_skipbody(httpsrv_client_t *hcl);
+static bool
+httpsrv_handle_http_skipbody(httpsrv_client_t *hcl) {
+	uint64_t	len;
+	int		i;
+
+	/* How much do we have? */
+	len = conn_buffer_cur(&hcl->conn);
+
+	if (len == 0) {
+		/* Try to get more */
+		i = conn_recv(&hcl->conn);
+		if (i == 0) {
+			/* Try at another time */
+			return (true);
+		}
+
+		/* We got some more, try again */
+		return (false);
+	}
+
+	/* Only skip over what needs to be skipped */
+	if (len > hcl->skipbody_len) {
+		len = hcl->skipbody_len;
+	}
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " SkipBody %" PRIu64,
+		hcl->id, conn_id(&hcl->conn), len);
+
+	/* Skip it */
+	conn_buffer_shift(&hcl->conn, len);
+
+	hcl->skipbody_len -= len;
+
+	/* Try some more */
+	return (false);
+}
+
+static bool
+httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl);
+static bool
+httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
+	uint64_t	len;
+	int		i;
+
+	/* Copy some more */
+	len = conn_copym(&hcl->conn,
+			&hcl->bodyfwd->conn,
+			hcl->bodyfwd_len);
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd %" PRIu64,
+		hcl->id,
+		conn_id(&hcl->conn),
+		conn_id(&hcl->bodyfwd->conn),
+		len);
+
+	if (len == 0) {
+		/* Try to get more */
+		i = conn_recv(&hcl->conn);
+		if (i == 0) {
+			/* Try at another time */
+			return (true);
+		}
+
+		/* We got some more */
+		return (false);
+	}
+
+	/* Some bits less */
+	fassert(len <= hcl->bodyfwd_len);
+	hcl->bodyfwd_len -= len;
+
+	/*
+	 * Allow partial body content reads
+	 * if that happens at _done() time we
+	 * read in the remainder that is this
+	 */
+	fassert(len <= hcl->headers.content_length);
+	hcl->headers.content_length -= len;
+
+	/* Done or something went wrong? */
+	if (hcl->bodyfwd_len == 0 || len == 0) {
+
+		logline(log_DEBUG_,
+			HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Done",
+			hcl->id,
+			conn_id(&hcl->conn),
+			conn_id(&hcl->bodyfwd->conn));
+
+		connset_setup_handling(&hcl->bodyfwd->conn);
+
+		/* Inform the caller */
+		fassert(hcl->hs->bodyfwd_done);
+		hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
+
+		assert(hcl->bodyfwd);
+
+		logline(log_DEBUG_,
+			HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Flush",
+			hcl->id,
+			conn_id(&hcl->conn),
+			conn_id(&hcl->bodyfwd->conn));
+
+		httpsrv_done(hcl->bodyfwd);
+		connset_handled(&hcl->bodyfwd->conn);
+
+		/* Handled it */
+		hcl->bodyfwd = NULL;
+		hcl->bodyfwd_len = 0;
+
+		/* Done with this for now */
+		httpsrv_done(hcl);
+		return (true);
+	}
+
+	return (false);
+}
+
+static bool
+httpsrv_handle_http_readbody(httpsrv_client_t *hcl);
+static bool
+httpsrv_handle_http_readbody(httpsrv_client_t *hcl) {
+	uint64_t	len;
+	int		i;
+	bool		done;
+
+	len = conn_buffer_cur(&hcl->conn);
+
+	if (len == 0) {
+		/* Try to get more */
+		i = conn_recv(&hcl->conn);
+		if (i == 0) {
+			/* Try at another time */
+			return (true);
+		}
+
+		/* We got some more */
+		return (false);
+	}
+
+	/* Only read upto the max even if there is more */
+	if (len > hcl->readbody_len) {
+		len = hcl->readbody_len;
+	}
+
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " ReadBody "
+		"%" PRIu64 " / %" PRIu64 " / %" PRIu64,
+		hcl->id,
+		conn_id(&hcl->conn),
+		len,
+		hcl->readbody_len,
+		hcl->readbody_off);
+
+	/* Copy it to the user supplied buffer */
+	memcpy(	&hcl->readbody[hcl->readbody_off],
+		conn_buffer(&hcl->conn),
+		len);
+
+	/* We read this from the buffer */
+	conn_buffer_shift(&hcl->conn, len);
+
+	/* Some more gone, some more there */
+	hcl->readbody_len -= len;
+	hcl->readbody_off += len;
+
+	/* Complete? Call handle function */
+	if (hcl->readbody_len == 0) {
+		/* Process it */
+		fassert(hcl->hs->handle);
+
+		logline(log_DEBUG_,
+			HCL_ID " handling body",
+			hcl->id);
+
+		done = hcl->hs->handle(hcl, hcl->user);
+
+		logline(log_DEBUG_,
+			HCL_ID " handling body complete",
+			hcl->id);
+
+		if (done) {
+			return (true);
+		}
+	}
+
+	return (false);
+}
+
 static void
 httpsrv_handle_http(httpsrv_client_t *hcl) {
 	char		line[4096];
@@ -142,183 +351,22 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 	while (true) {
 		/* Skip over the body? */
 		if (hcl->skipbody_len) {
-			/* How much do we have? */
-			len = conn_buffer_cur(&hcl->conn);
-
-			if (len == 0) {
-				/* Try to get more */
-				i = conn_recv(&hcl->conn);
-				if (i == 0) {
-					/* Try another time */
-					return;
-				}
-
-				/* We got some more */
-				continue;
-			}
-
-			/* Only skip over what needs to be skipped */
-			if (len > hcl->skipbody_len) {
-				len = hcl->skipbody_len;
-			}
-
-			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID " SkipBody %" PRIu64,
-				hcl->id, conn_id(&hcl->conn), len);
-
-			/* Skip it */
-			conn_buffer_shift(&hcl->conn, len);
-
-			hcl->skipbody_len -= len;
-
-			/* Try some more */
+			if (httpsrv_handle_http_skipbody(hcl))
+				return;
 			continue;
 		}
 
 		/* Forwarding the body? */
 		if (hcl->bodyfwd) {
-			/* Copy some more */
-			len = conn_copym(&hcl->conn,
-					&hcl->bodyfwd->conn,
-					hcl->bodyfwd_len);
-
-			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID "->" CONN_ID
-				" BodyFwd %" PRIu64,
-				hcl->id,
-				conn_id(&hcl->conn),
-				conn_id(&hcl->bodyfwd->conn),
-				len);
-
-			if (len == 0) {
-				/* Try to get more */
-				i = conn_recv(&hcl->conn);
-				if (i == 0) {
-					/* Try another time */
-					return;
-				}
-
-				/* We got some more */
-				continue;
-			}
-
-			/* Some bits less */
-			fassert(len <= hcl->bodyfwd_len);
-			hcl->bodyfwd_len -= len;
-
-			/*
-			 * Allow partial body content reads
-			 * if that happens at _done() time we
-			 * read in the remainder that is this
-			 */
-			fassert(len <= hcl->headers.content_length);
-			hcl->headers.content_length -= len;
-
-			/* Done or something went wrong? */
-			if (hcl->bodyfwd_len == 0 || len == 0) {
-				logline(log_DEBUG_,
-					HCL_ID " " CONN_ID "->" CONN_ID
-					" BodyFwd Done",
-					hcl->id,
-					conn_id(&hcl->conn),
-					conn_id(&hcl->bodyfwd->conn));
-
-				connset_setup_handling(&hcl->bodyfwd->conn);
-
-				/* Inform the caller */
-				fassert(hcl->hs->bodyfwd_done);
-				hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
-
-				assert(hcl->bodyfwd);
-
-				logline(log_DEBUG_,
-					HCL_ID " " CONN_ID "->" CONN_ID
-					" BodyFwd Flush",
-					hcl->id,
-					conn_id(&hcl->conn),
-					conn_id(&hcl->bodyfwd->conn));
-
-				httpsrv_done(hcl->bodyfwd);
-				connset_handled(&hcl->bodyfwd->conn);
-
-				hcl->bodyfwd = NULL;
-				hcl->bodyfwd_len = 0;
-
-				httpsrv_done(hcl);
-
-				/* Done with this for now */
+			if (httpsrv_handle_http_bodyfwd(hcl))
 				return;
-			}
-
-			/* Try once more */
 			continue;
 		}
 
 		/* Read in the buffer? */
 		if (hcl->readbody) {
-			len = conn_buffer_cur(&hcl->conn);
-
-			if (len == 0) {
-				/* Try to get more */
-				i = conn_recv(&hcl->conn);
-				if (i == 0) {
-					/* Try another time */
-					return;
-				}
-
-				/* We got some more */
-				continue;
-			}
-
-			/* Only read upto the max even if there is more */
-			if (len > hcl->readbody_len) {
-				len = hcl->readbody_len;
-			}
-
-			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID " ReadBody %" PRIu64
-				" / %" PRIu64 " / %" PRIu64,
-				hcl->id,
-				conn_id(&hcl->conn),
-				len,
-				hcl->readbody_len,
-				hcl->readbody_off);
-
-			/* Copy it to the user supplied buffer */
-			memcpy(	&hcl->readbody[hcl->readbody_off],
-				conn_buffer(&hcl->conn),
-				len);
-
-			/* We read this from the buffer */
-			conn_buffer_shift(&hcl->conn, len);
-
-			/* Some more gone, some more there */
-			hcl->readbody_len -= len;
-			hcl->readbody_off += len;
-
-			/* Complete? Call handle function */
-			if (hcl->readbody_len == 0) {
-				/* Process it */
-				fassert(hcl->hs->handle);
-
-				logline(log_DEBUG_,
-					HCL_ID " handling body",
-					hcl->id);
-
-				done = hcl->hs->handle(hcl, hcl->user);
-
-				logline(log_DEBUG_,
-					HCL_ID " handling body complete",
-					hcl->id);
-
-				if (done)
-					return;
-				else
-					continue;
-			}
-
-			fassert(len != 0);
-
+			if (httpsrv_handle_http_readbody(hcl))
+				return;
 			continue;
 		}
 
@@ -549,8 +597,9 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	/* Reset */
 	hcl->close = false;
 	hcl->busy = false;
-	hcl->bodyfwd = NULL;
-	hcl->bodyfwd_len = 0;
+
+	/* Should be clean before landing here */
+	assert(hcl->bodyfwd == NULL && hcl->bodyfwd_len == 0);
 
 	/*
 	 * This cl connection is now ready for the next request

@@ -55,6 +55,7 @@ typedef struct {
 } httpsrv_headers_t;
 
 typedef struct httpsrv_client httpsrv_client_t;
+typedef void (*httpsrv_sf)(httpsrv_client_t *hcl);
 typedef void (*httpsrv_f)(httpsrv_client_t *hcl, void *user);
 typedef bool (*httpsrv_done_f)(httpsrv_client_t *hcl, void *user);
 typedef void (*httpsrv_line_f)(httpsrv_client_t *hcl, void *user, char *line);
@@ -121,6 +122,10 @@ struct httpsrv_client {
 	uint64_t		readbody_siz;	/* How large the buffer really is */
 
 	uint64_t		skipbody_len;	/* Skip this many bytes */
+
+	/* Temp set by user for doing small things after conn_handled() */
+	/* Typically used for changing processing lists to avoid races */
+	httpsrv_sf		posthandle;
 };
 
 #define HCL_IDn "%" PRIu64
@@ -145,7 +150,10 @@ void httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a);
 
 const char *httpsrv_methodname(unsigned int method);
 void httpsrv_close(httpsrv_client_t *hcl);
+
 void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
+void httpsrv_set_posthandle(httpsrv_client_t *hcl, httpsrv_sf f);
+
 bool httpsrv_parse_request(httpsrv_client_t *hcl);
 void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 
