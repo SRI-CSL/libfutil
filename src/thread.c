@@ -385,11 +385,14 @@ thread_stopall(bool force) {
 	list_for(l_threads, t, tn, mythread_t *) {
 		if (t->thread_id == tid)
 			continue;
+
+		thread_lock(t);
 #ifndef _WIN32
 		pthread_cond_broadcast(&t->cond);
 #else
 		/* XXX: Signal threads that they should exit (win32) */
 #endif
+		thread_unlock(t);
 	}
 	list_unlock(l_threads);
 
