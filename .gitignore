@@ -7,3 +7,9 @@ src/*.slo
 src/*.swp
 src/.libs
 
+src/db/*.o
+src/db/*.d
+
+src/rfc6234/*.o
+src/rfc6234/*.d
+
