@@ -16,7 +16,7 @@ bool buf_init(buf_t *buf);
 void buf_destroy(buf_t *buf);
 
 void buf_empty(buf_t *buf);
-#define buf_emptyL(buf) buf_lock(buf); buf_empty(buf); buf_unlock(buf)
+void buf_emptyL(buf_t *buf);
 
 void buf_shift(buf_t *buf, unsigned int length);
 

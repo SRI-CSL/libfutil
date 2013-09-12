@@ -58,6 +58,13 @@ buf_empty(buf_t *buf) {
 }
 
 void
+buf_emptyL(buf_t *buf) {
+	buf_lock(buf);
+	buf_empty(buf);
+	buf_unlock(buf);
+}
+
+void
 buf_shift(buf_t *buf, unsigned int length) {
 
 	/* Should never try to shift out more than what is left */
