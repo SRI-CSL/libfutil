@@ -147,8 +147,6 @@ const char *httpsrv_methodname(unsigned int method);
 void httpsrv_close(httpsrv_client_t *hcl);
 void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
 bool httpsrv_parse_request(httpsrv_client_t *hcl);
-void httpsrv_silence(httpsrv_client_t *hcl);
-void httpsrv_speak(httpsrv_client_t *hcl);
 void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 
 int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
