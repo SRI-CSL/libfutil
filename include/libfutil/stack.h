@@ -9,7 +9,11 @@ void output_stacktrace(void);
 #ifdef DEBUG_STACKDUMPS
 #define fassert(x) { if (!(x)) { output_stacktrace(); abort(); } }
 #else
+#ifndef NDEBUG
 #define fassert(x) assert(x)
+#else
+#define fassert(x) {}
+#endif /* NDEBUG */
 #endif /* DEBUG_STACKDUMPS */
 
 #endif /* STACK_H */
