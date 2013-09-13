@@ -14,11 +14,6 @@
  *	 	    -new -out server.pem
  */
 
-/* Forward, only used internally as they are the non-mutexed version */
-static void conn_eventsA(conn_t *conn, uint16_t events);
-static void conn_set_connset(conn_t *conn, connset_t *cs);
-static int conn_recvA(conn_t *conn);
-
 #ifdef _WIN32
 /* Windows writev() support */
 struct iovec {
@@ -37,22 +32,24 @@ writev(socket_t sock, const struct iovec *vector, DWORD count) {
 }
 #endif
 
-void
+static void
 connset_lock(connset_t *cs);
-void
+static void
 connset_lock(connset_t *cs) {
 	mutex_lock(cs->mutex);
 }
 
-void
+static void
 connset_unlock(connset_t *cs);
-void
+static void
 connset_unlock(connset_t *cs) {
 	mutex_unlock(cs->mutex);
 }
 
-const char *connset_list(connset_t *cs, hlist_t *l);
-const char *connset_list(connset_t *cs, hlist_t *l) {
+static const char *
+connset_list(connset_t *cs, hlist_t *l);
+static const char *
+connset_list(connset_t *cs, hlist_t *l) {
 	return	(l == &cs->ready	? "ready" :
 		(l == &cs->active	? "active" :
 		(l == &cs->inactive	? "inactive" :
@@ -62,15 +59,23 @@ const char *connset_list(connset_t *cs, hlist_t *l) {
 }
 
 void
+conn_showlist(conn_t *conn) {
+	logline(log_DEBUG_,
+		CONN_ID " list: %s",
+		conn_id(conn),
+		connset_list(conn->connset, conn->connset_l));
+}
+
+static void
 conn_lock(conn_t *conn);
-void
+static void
 conn_lock(conn_t *conn) {
 	mutex_lock(conn->mutex);
 }
 
-void
+static void
 conn_unlock(conn_t *conn);
-void
+static void
 conn_unlock(conn_t *conn) {
 	mutex_unlock(conn->mutex);
 }
@@ -95,6 +100,8 @@ conn_bits(conn_poll_out,(conn->hasevents & CONN_POLLOUT) &&
 			(conn->wntevents & CONN_POLLOUT))
 
 static void
+conn_set_nonblocking(conn_t *conn);
+static void
 conn_set_nonblocking(conn_t *conn) {
 #ifndef _WIN32
 	int flags;
@@ -114,6 +121,8 @@ conn_set_nonblocking(conn_t *conn) {
 #endif
 }
 
+static void
+conn_set_blocking(conn_t *conn);
 static void
 conn_set_blocking(conn_t *conn) {
 #ifndef _WIN32
@@ -816,8 +825,141 @@ conn_init(conn_t *conn, void *clientdata)
 	return (true);
 }
 
-/* Locked by caller */
+/* What do we want to hear? (Mutex locked by caller) */
+static void
+conn_eventsA(conn_t *conn, uint16_t events);
+static void
+conn_eventsA(conn_t *conn, uint16_t events) {
+	hlist_t *new_l;
+
+	fassert(conn_is_valid(conn));
+
+	/*
+	 * We allow sockets to work without a connset
+	 * they are synchronous then though
+	 */
+	if (conn->connset == NULL)
+		return;
+
+	/* Nothing to do? */
+        if (conn->wntevents == events)
+		return;
+
+	/* Lock her up */
+	connset_lock(conn->connset);
+
+	/* When handling, don't change anything except what we want (after if) */
+	if (conn->connset_l == &conn->connset->handling) {
+		logline(log_DEBUG_,
+			CONN_ID " handling thus not changing lists",
+			conn_id(conn));
+	} else {
+		logline(log_DEBUG_,
+			CONN_ID " want=%u, events=%u",
+			conn_id(conn), conn->wntevents, events);
+
+		/* Currently monitoring for something? */
+		if ((conn->wntevents & CONN_POLLIN) !=
+		          (events & CONN_POLLIN)) {
+			/* Remove the bit? */
+			if (events & CONN_POLLIN)
+				FD_SET(conn->sock, &conn->connset->fd_read);
+			else
+				FD_CLR(conn->sock, &conn->connset->fd_read);
+		}
+
+		if ((conn->wntevents & CONN_POLLOUT) !=
+		          (events & CONN_POLLOUT)) {
+			/* Remove the bit? */
+			if (events & CONN_POLLOUT)
+				FD_SET(conn->sock, &conn->connset->fd_write);
+			else
+				FD_CLR(conn->sock, &conn->connset->fd_write);
+		}
+
+		logline(log_DEBUG_,
+			CONN_ID " currently on list: %s",
+			conn_id(conn),
+			connset_list(conn->connset, conn->connset_l));
+
+		/* Stay on ready when already there, go active, or go inactive otherwise */
+		new_l = events != CONN_POLLNONE ?
+				(conn->connset_l == &conn->connset->ready ?
+				  &conn->connset->ready : &conn->connset->active) :
+				&conn->connset->inactive;
+
+		logline(log_DEBUG_,
+			CONN_ID " new list: %s",
+			conn_id(conn),
+			connset_list(conn->connset, new_l));
+
+		/* Different list? */
+		if (conn->connset_l != new_l) {
+
+			/* Remove it from the current list */
+			if (conn->connset_l != NULL) {
+				list_remove_l(conn->connset_l, &conn->node);
+			}
+
+			/* The current list */
+			conn->connset_l = new_l;
+
+			/* Add it to active or inactive */
+			list_addtail_l(new_l, &conn->node);
+		}
+
+		logline(log_DEBUG_,
+			CONN_ID " (non-handling done)",
+			conn_id(conn));
+	}
+
+	/* They match now */
+	conn->wntevents = events;
+
+	logline(log_DEBUG_, CONN_ID " events are now: %s %s, list: %s",
+		conn_id(conn),
+		conn_wnt_in(conn)	? "IN" : ".",
+		conn_wnt_out(conn)	? "OUT" : ".",
+		connset_list(conn->connset, conn->connset_l));
+
+	/* Ensure that we track the hi_fd properly */
+	if (events != 0) {
+/* Windows does not use the highest fd param, it is there for compat only */
+#ifndef _WIN32
+		/* Make sure we have the right Highest FD */
+		if (conn->sock > conn->connset->hifd) {
+			logline(log_DEBUG_,
+				CONNS_ID " New high FD: " SOCK_ID " " CONN_ID,
+				conn->connset->id,
+				conn_sock(conn),
+				conn_id(conn));
+			conn->connset->hifd = conn->sock;
+		} else {
+			logline(log_DEBUG_,
+				CONNS_ID " Old high FD: " SOCK_ID
+				", " CONN_ID " = " SOCK_ID,
+				conn->connset->id,
+				conn->connset->hifd,
+				conn_id(conn),
+				conn_sock(conn));
+		}
+#endif
+	}
+
+	connset_unlock(conn->connset);
+}
+
 void
+conn_events(conn_t *conn, uint16_t events) {
+	conn_lock(conn);
+	conn_eventsA(conn, events);
+	conn_unlock(conn);
+}
+
+/* Locked by caller */
+static void
+conn_set_connset(conn_t *conn, connset_t *cs);
+static void
 conn_set_connset(conn_t *conn, connset_t *cs) {
 	uint16_t events = conn->wntevents;
 
@@ -908,9 +1050,9 @@ connset_init(connset_t *cs) {
 	cs->hifd = -1;
 }
 
-unsigned int
+static unsigned int
 connset_destroy_list(hlist_t *l, const char *state);
-unsigned int
+static unsigned int
 connset_destroy_list(hlist_t *l, const char *state) {
 	unsigned int	i = 0;
 	conn_t		*conn;
@@ -951,9 +1093,9 @@ connset_destroy(connset_t *cs) {
 }
 
 #ifdef POLLDEBUG
-void
+static void
 connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w);
-void
+static void
 connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w) {
 	conn_t		*conn, *conn_next;
 	
@@ -1204,9 +1346,9 @@ conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
  *
  * This puts a connection on the handling list.
  */
-void
+static void
 connset_setup_handlingL(conn_t *conn);
-void
+static void
 connset_setup_handlingL(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
@@ -1231,9 +1373,9 @@ connset_setup_handlingL(conn_t *conn) {
 		conn_id(conn));
 }
 
-void
+static void
 connset_setup_handlingA(conn_t *conn);
-void
+static void
 connset_setup_handlingA(conn_t *conn) {
 	/* Lock her up */
 	conn_lock(conn);
@@ -1414,6 +1556,8 @@ conn_close(conn_t *conn) {
 }
 
 static bool
+conn_is_eofA(conn_t UNUSED *conn);
+static bool
 conn_is_eofA(conn_t UNUSED *conn) {
 	return (false);
 #if 0
@@ -1455,138 +1599,11 @@ conn_is_eof(conn_t *conn) {
 	return (ret);
 }
 
-/* What do we want to hear? (Mutex locked by caller) */
-void
-conn_eventsA(conn_t *conn, uint16_t events) {
-	hlist_t *new_l;
-
-	fassert(conn_is_valid(conn));
-
-	/*
-	 * We allow sockets to work without a connset
-	 * they are synchronous then though
-	 */
-	if (conn->connset == NULL)
-		return;
-
-	/* Nothing to do? */
-        if (conn->wntevents == events)
-		return;
-
-	/* Lock her up */
-	connset_lock(conn->connset);
-
-	/* When handling, don't change anything except what we want (after if) */
-	if (conn->connset_l == &conn->connset->handling) {
-		logline(log_DEBUG_,
-			CONN_ID " handling thus not changing lists",
-			conn_id(conn));
-	} else {
-		logline(log_DEBUG_,
-			CONN_ID " want=%u, events=%u",
-			conn_id(conn), conn->wntevents, events);
-
-		/* Currently monitoring for something? */
-		if ((conn->wntevents & CONN_POLLIN) !=
-		          (events & CONN_POLLIN)) {
-			/* Remove the bit? */
-			if (events & CONN_POLLIN)
-				FD_SET(conn->sock, &conn->connset->fd_read);
-			else
-				FD_CLR(conn->sock, &conn->connset->fd_read);
-		}
-
-		if ((conn->wntevents & CONN_POLLOUT) !=
-		          (events & CONN_POLLOUT)) {
-			/* Remove the bit? */
-			if (events & CONN_POLLOUT)
-				FD_SET(conn->sock, &conn->connset->fd_write);
-			else
-				FD_CLR(conn->sock, &conn->connset->fd_write);
-		}
-
-		logline(log_DEBUG_,
-			CONN_ID " currently on list: %s",
-			conn_id(conn),
-			connset_list(conn->connset, conn->connset_l));
-
-		/* Stay on ready when already there, go active, or go inactive otherwise */
-		new_l = events != CONN_POLLNONE ?
-				(conn->connset_l == &conn->connset->ready ?
-				  &conn->connset->ready : &conn->connset->active) :
-				&conn->connset->inactive;
-
-		logline(log_DEBUG_,
-			CONN_ID " new list: %s",
-			conn_id(conn),
-			connset_list(conn->connset, new_l));
-
-		/* Different list? */
-		if (conn->connset_l != new_l) {
-
-			/* Remove it from the current list */
-			if (conn->connset_l != NULL) {
-				list_remove_l(conn->connset_l, &conn->node);
-			}
-
-			/* The current list */
-			conn->connset_l = new_l;
-
-			/* Add it to active or inactive */
-			list_addtail_l(new_l, &conn->node);
-		}
-
-		logline(log_DEBUG_,
-			CONN_ID " (non-handling done)",
-			conn_id(conn));
-	}
-
-	/* They match now */
-	conn->wntevents = events;
-
-	logline(log_DEBUG_, CONN_ID " events are now: %s %s, list: %s",
-		conn_id(conn),
-		conn_wnt_in(conn)	? "IN" : ".",
-		conn_wnt_out(conn)	? "OUT" : ".",
-		connset_list(conn->connset, conn->connset_l));
-
-	/* Ensure that we track the hi_fd properly */
-	if (events != 0) {
-/* Windows does not use the highest fd param, it is there for compat only */
-#ifndef _WIN32
-		/* Make sure we have the right Highest FD */
-		if (conn->sock > conn->connset->hifd) {
-			logline(log_DEBUG_,
-				CONNS_ID " New high FD: " SOCK_ID " " CONN_ID,
-				conn->connset->id,
-				conn_sock(conn),
-				conn_id(conn));
-			conn->connset->hifd = conn->sock;
-		} else {
-			logline(log_DEBUG_,
-				CONNS_ID " Old high FD: " SOCK_ID
-				", " CONN_ID " = " SOCK_ID,
-				conn->connset->id,
-				conn->connset->hifd,
-				conn_id(conn),
-				conn_sock(conn));
-		}
-#endif
-	}
-
-	connset_unlock(conn->connset);
-}
-
-void
-conn_events(conn_t *conn, uint16_t events) {
-	conn_lock(conn);
-	conn_eventsA(conn, events);
-	conn_unlock(conn);
-}
-
 #ifdef CONN_SSL
 /* returns: true = done, false = not done */
 /* Internal only, does not lock */
+static bool
+conn_ssl_flush(conn_t *conn);
 static bool
 conn_ssl_flush(conn_t *conn) {
 	ssize_t r;
@@ -1638,6 +1655,8 @@ conn_ssl_flush(conn_t *conn) {
 	return (true);
 }
 
+static void
+conn_ssl_bio_write(conn_t *conn);
 static void
 conn_ssl_bio_write(conn_t *conn) {
 	int rc;
@@ -1706,6 +1725,8 @@ conn_ssl_bio_write(conn_t *conn) {
 }
 
 static void
+conn_ssl_bio_read(conn_t *conn);
+static void
 conn_ssl_bio_read(conn_t *conn) {
 	int rc;
 
@@ -1736,6 +1757,8 @@ conn_ssl_bio_read(conn_t *conn) {
 }
 
 static void
+conn_ssl_bio(conn_t *conn);
+static void
 conn_ssl_bio(conn_t *conn) {
 
 	logline(log_DEBUG_, CONN_ID ", ...", conn_id(conn));
@@ -1753,6 +1776,9 @@ conn_ssl_bio(conn_t *conn) {
 	buf_unlock(&conn->recv);
 }
 
+static long
+conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
+                        int UNUSED argi, long UNUSED argl, long retvalue);
 static long
 conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
                         int UNUSED argi, long UNUSED argl, long retvalue)
@@ -1811,7 +1837,9 @@ conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
 #endif /* CONN_SSL */
 
 /* Locked by caller */
-int
+static int
+conn_recvA(conn_t *conn);
+static int
 conn_recvA(conn_t *conn) {
 	uint64_t	len;
 	ssize_t		r;
@@ -2059,6 +2087,8 @@ conn_unset_flush_hook(conn_t *conn) {
 
 #ifdef CONN_SSL
 static bool
+conn_ssl_send(conn_t *conn, const char *buf, uint64_t *len);
+static bool
 conn_ssl_send(conn_t *conn, const char *buf, uint64_t *len) {
 	int	rc;
 
@@ -2090,6 +2120,9 @@ conn_ssl_send(conn_t *conn, const char *buf, uint64_t *len) {
 	return (true);
 }
 
+static bool
+conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
+	       unsigned int nvec, uint64_t *len);
 static bool
 conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
 	       unsigned int nvec, uint64_t *len)

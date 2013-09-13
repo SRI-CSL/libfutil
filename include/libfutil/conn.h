@@ -103,6 +103,8 @@ bool conn_init(conn_t *conn, void *clientdata);
 void conn_destroy(conn_t *conn);
 void conn_close(conn_t *conn);
 
+void conn_showlist(conn_t *conn);
+
 bool conn_create_listen(connset_t *connset, const char *hostname,
 			uint32_t protocol, uint32_t port);
 
@@ -146,9 +148,6 @@ bool conn_vprintf(conn_t *conn, const char *fmt, va_list ap)
 bool conn_printf(conn_t *conn, const char *fmt, ...)
 	ATTR_FORMAT(printf, 2, 3);
 
-void conn_set_state(conn_t *conn, connstate_t state);
-bool conn_is_state(conn_t *conn, connstate_t state);
-
 #define CONN_IDn "c%" PRIu64 ""
 #define CONN_ID "[" CONN_IDn "]"
 #define CONNS_ID "[s%" PRIu64 "]"
@@ -180,8 +179,10 @@ bool conn_is_state(conn_t *conn, connstate_t state);
 #define conn_header_empty(conn) (buf_empty(&(conn)->send_headers))
 
 #define conn_state(conn) ((conn)->state)
+void conn_set_state(conn_t *conn, connstate_t state);
 #define conn_set_connected(conn) conn_set_state(conn, CONN_CONNECTED)
 
+bool conn_is_state(conn_t *conn, connstate_t st);
 #define conn_is_connected(conn) conn_is_state(conn, CONN_CONNECTED)
 #define conn_is_connecting(conn) conn_is_state(conn, CONN_CONNECTING)
 #define conn_is_there(conn) (((conn) != NULL) && ((conn)->id != 0))
