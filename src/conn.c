@@ -3,7 +3,7 @@
 /* XXX: conn_id + connset_id are not mutex'ed thus could race in theory */
 
 /*
- * Debug polling mechanism - enables extra checks and assert()s
+ * Debug polling mechanism - enables extra checks and fassert()s
 */
 /* #define POLLDEBUG */
 
@@ -1278,7 +1278,7 @@ connset_poll(connset_t *cs) {
 				FD_CLR(conn->sock, &conn->connset->fd_read);
 				FD_CLR(conn->sock, &conn->connset->fd_write);
 
-				assert(conn->connset_l == &conn->connset->active);
+				fassert(conn->connset_l == &conn->connset->active);
 				list_remove(&conn->connset->active,
 					    &conn->node);
 
@@ -1319,7 +1319,7 @@ connset_poll(connset_t *cs) {
 void
 conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
 	/* should not be set multiple times */
-	assert(conn->posthandle_f == NULL);
+	fassert(conn->posthandle_f == NULL);
 
 	/* The function and user data */
 	conn->posthandle_f = f;
@@ -1356,7 +1356,7 @@ connset_handling_setupL(conn_t *conn) {
 	/*
 	 * We took conn from a list add it to handling list
 	 */
-	assert(conn->connset_l == &conn->connset->ready);
+	fassert(conn->connset_l == &conn->connset->ready);
 	conn->connset_l = &conn->connset->handling;
 	list_addtail_l(&conn->connset->handling, &conn->node);
 
@@ -1390,8 +1390,8 @@ connset_handling_setup(conn_t *conn) {
 	connset_lock(conn->connset);
 
 	/* Should not be on ready or handling lists */
-	assert(conn->connset_l != &conn->connset->ready);
-	assert(conn->connset_l != &conn->connset->handling);
+	fassert(conn->connset_l != &conn->connset->ready);
+	fassert(conn->connset_l != &conn->connset->handling);
 	list_remove_l(conn->connset_l, &conn->node);
 
 	/* Fake that it was on the ready list */
@@ -1448,7 +1448,7 @@ connset_handling_done(conn_t *conn, bool keeplocked) {
 		connset_list(conn->connset, conn->connset_l));
 
 	/* Should still be on the handling list */
-	assert(conn->connset_l == &conn->connset->handling);
+	fassert(conn->connset_l == &conn->connset->handling);
 
 	if (!keeplocked) {
 		/* Set the bits correctly so that select() answers again */
@@ -2379,7 +2379,7 @@ conn_flush(conn_t *conn) {
 
 		/* Bytes left from the normal buffer? */
 		if (wlen > 0) {
-			assert(wlen < len_b);
+			fassert(wlen < len_b);
 			/* Move the rest to the front of the buffer */
 			buf_shift(&conn->send, wlen);
 		}

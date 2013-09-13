@@ -62,7 +62,7 @@ void
 httpsrv_set_posthandle_hook(conn_t *conn, void *user) {
 	httpsrv_client_t *hcl = (httpsrv_client_t *)user;
 
-	assert(conn == &hcl->conn);
+	fassert(conn == &hcl->conn);
 
 	hcl->posthandle(hcl);
 }
@@ -244,10 +244,10 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 			conn_id(&hcl->bodyfwd->conn));
 
 		/* Inform the caller */
-		fassert(hcl->hs->bodyfwd_done);
+		fassert(hcl->hs->bodyfwd_done != NULL);
 		hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
 
-		assert(hcl->bodyfwd);
+		fassert(hcl->bodyfwd != NULL);
 
 		logline(log_DEBUG_,
 			HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Flush",
@@ -571,7 +571,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 void
 httpsrv_done(httpsrv_client_t *hcl) {
-	assert(hcl->keephandling == false);
+	fassert(hcl->keephandling == false);
 
 	/* Skip remaining content_length */
 	hcl->skipbody_len = hcl->headers.content_length;
@@ -622,7 +622,7 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	hcl->keephandling = false;
 
 	/* Should be clean before landing here */
-	assert(hcl->bodyfwd == NULL && hcl->bodyfwd_len == 0);
+	fassert(hcl->bodyfwd == NULL && hcl->bodyfwd_len == 0);
 
 	/*
 	 * This cl connection is now ready for the next request
@@ -1166,7 +1166,7 @@ httpsrv_worker_thread(void *context) {
 					hcl->id, conn_id(conn));
 
 				/* Handling needs to be done */
-				assert(hcl->keephandling == false);
+				fassert(hcl->keephandling == false);
 				connset_handling_done(conn, false);
 
 				if (httpsrv_client_close(hcl, false)) {
@@ -1214,7 +1214,7 @@ httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max) {
 	uint64_t size = hcl->headers.content_length;
 
 	/* Should never try to read a 0 length body */
-	assert(size != 0);
+	fassert(size != 0);
 
 	/* If no maximum given, default to 5 MiB */
 	if (max == 0) {

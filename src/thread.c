@@ -64,7 +64,7 @@ thread_signal(DWORD UNUSED sig) {
 
 bool
 thread_init(void) {
-	assert(l_threads == NULL);
+	fassert(l_threads == NULL);
 
 	l_threads = mcalloc(sizeof *l_threads, "l_threads");
 	if (!l_threads) {
