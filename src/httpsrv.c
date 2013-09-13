@@ -121,6 +121,12 @@ static void
 httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
 	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s", code, msg);
 
+	if (code != 200) {
+		logline(log_ERR_,
+			HCL_ID " " CONN_ID " HTTP Error %u %s",
+			hcl->id, conn_id(&hcl->conn), code, msg);
+	}
+
 	if (hcl->hs->top)
 		hcl->hs->top(hcl, hcl->user);
 
@@ -1169,15 +1175,20 @@ httpsrv_worker_thread(void *context) {
 				fassert(hcl->keephandling == false);
 				connset_handling_done(conn, false);
 
+				/* Remove the item from the list */
+				list_remove_l(&hs->sessions, &hcl->node);
+
 				if (httpsrv_client_close(hcl, false)) {
 					/* It really is gone */
-					list_remove_l(&hs->sessions, &hcl->node);
 				} else {
 					/* It should go later */
 					logline(log_DEBUG_,
 						HCL_ID " " CONN_ID
 						" Closing delayed for flush",
 						hcl->id, conn_id(conn));
+
+					/* Not gone, add it back */
+					list_addtail_l(&hs->sessions, &hcl->node);
 				}
 
 				/* Already done handled_ready */
