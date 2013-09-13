@@ -1,6 +1,7 @@
 #include <libfutil/misc.h>
 
-void rwl_init(rwl_t *l) {
+void
+rwl_init(rwl_t *l) {
 	fassert(l);
 	memzero(l, sizeof *l);
 	mutex_init(l->mutex);
@@ -9,7 +10,8 @@ void rwl_init(rwl_t *l) {
 	l->writers = 0;
 }
 
-void rwl_destroy(rwl_t *l) {
+void
+rwl_destroy(rwl_t *l) {
 	fassert(l);
 	fassert(l->readers == 0);
 	fassert(l->writers == 0);
@@ -18,7 +20,8 @@ void rwl_destroy(rwl_t *l) {
 	mutex_destroy(l->mutexW);
 }
 
-void rwl_lockR(rwl_t *l) {
+void
+rwl_lockR(rwl_t *l) {
 	fassert(l);
 
 	mutex_lock(l->mutex);
@@ -39,7 +42,8 @@ void rwl_lockR(rwl_t *l) {
 	}
 }
 
-void rwl_unlockR(rwl_t *l) {
+void 
+rwl_unlockR(rwl_t *l) {
 	fassert(l);
 	fassert(l->readers > 0);
 
@@ -51,7 +55,8 @@ void rwl_unlockR(rwl_t *l) {
 	mutex_unlock(l->mutex);
 }
 
-void rwl_lockW(rwl_t *l) {
+void
+rwl_lockW(rwl_t *l) {
 	bool		w = false;
 
 	fassert(l);
@@ -94,7 +99,8 @@ void rwl_lockW(rwl_t *l) {
 	mutex_unlock(l->mutex);
 }
 
-void rwl_unlockW(rwl_t *l) {
+void
+rwl_unlockW(rwl_t *l) {
 	fassert(l);
 	fassert(l->writers > 0);
 
