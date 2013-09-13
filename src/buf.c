@@ -92,8 +92,10 @@ buf_added(buf_t *buf, unsigned int length) {
 }
 
 /* Mutex locked by caller */
-bool buf_willfit(buf_t *buf, unsigned int len);
-bool buf_willfit(buf_t *buf, unsigned int len) {
+static bool
+buf_willfit(buf_t *buf, unsigned int len);
+static bool
+buf_willfit(buf_t *buf, unsigned int len) {
 	uint64_t	ns;
 	char		*b;
 
@@ -131,6 +133,7 @@ bool buf_willfit(buf_t *buf, unsigned int len) {
 
 bool
 buf_minsize(buf_t *buf, unsigned int len) {
+	/* Trying to put something in there will cause buffer to resize */
 	return (buf_willfit(buf, len));
 }
 
