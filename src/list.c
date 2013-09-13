@@ -25,9 +25,9 @@
 #endif
 
 /* Is the list empty? */
-bool
+static bool
 list_isempty_l(hlist_t *l);
-bool
+static bool
 list_isempty_l(hlist_t *l) {
 	return (((hlist_t *)(l->tailprev)) == l);
 }
@@ -127,9 +127,9 @@ list_remove_l(hlist_t *l, hnode_t *n) {
 }
 
 /* Returns either NULL or a locked node */
-hnode_t *
+static hnode_t *
 list_pop_l(hlist_t *l);
-hnode_t *
+static hnode_t *
 list_pop_l(hlist_t *l) {
 	hnode_t *n;
 
