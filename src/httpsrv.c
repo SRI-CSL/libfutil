@@ -1168,8 +1168,11 @@ httpsrv_worker_thread(void *context) {
 			/* Need to close it? */
 			if (hcl->close) {
 				logline(log_DEBUG_,
-					HCL_ID " " CONN_ID " Closing",
+					HCL_ID " " CONN_ID " was closed",
 					hcl->id, conn_id(conn));
+
+				/* Don't do anything with this anymore */
+				conn_events(&hcl->conn, CONN_POLLNONE);
 
 				/* Handling needs to be done */
 				fassert(hcl->keephandling == false);
