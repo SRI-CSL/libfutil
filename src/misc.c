@@ -12,12 +12,12 @@ static const char project_git[] = "Project GIThash: " STR(PROJECT_GIT);
 static const char project_bld[]	= "Project Build: " STR(PROJECT_BUILDTIME);
 
 /* Where logs go to */
-const char	*l_log_filename = NULL;
-FILE		*l_log_output = NULL;
-unsigned int	l_log_level = LOG_INFO;
-const char	*l_log_name = NULL;
-logfunc_f	l_log_func = NULL;
-mutex_t		l_mutex;
+static const char	*l_log_filename = NULL;
+static FILE		*l_log_output = NULL;
+static unsigned int	l_log_level = LOG_INFO;
+static const char	*l_log_name = NULL;
+static logfunc_f	l_log_func = NULL;
+static mutex_t		l_mutex;
 
 void
 log_setup(const char *name, FILE *f) {
@@ -63,10 +63,10 @@ log_setfunc(logfunc_f func) {
 	mutex_unlock(l_mutex);
 }
 
-void
+static void
 logitVA(unsigned int level, const char *file, unsigned int line, const char *caller,
 	const char *format, va_list ap) ATTR_FORMAT(printf, 5, 0);
-void
+static void
 logitVA(unsigned int level, const char UNUSED *file,
 	unsigned int UNUSED line, const char *caller,
 	const char *format, va_list ap)
@@ -137,9 +137,9 @@ logitVA(unsigned int level, const char UNUSED *file,
 	mutex_unlock(l_mutex);
 }
 
-bool
+static bool
 log_levelcheck(unsigned int level);
-bool
+static bool
 log_levelcheck(unsigned int level) {
 	static bool	checked_env = false;
 	const char 	*e;
@@ -339,7 +339,8 @@ inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt) {
 	return (ret);
 }
 
-uint64_t gettimes(uint64_t *msec) {
+uint64_t
+gettimes(uint64_t *msec) {
 #ifdef __MACH__
 	/* OS X does not have clock_gettime, use clock_get_time */
 	clock_serv_t	cclock;
@@ -431,7 +432,8 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 }
 #endif
 
-bool misc_map(const char *str, const misc_map_t *map, char *data) {
+bool
+misc_map(const char *str, const misc_map_t *map, char *data) {
 	unsigned int	i = 0, l, len;
 	const char	*s;
 
@@ -582,7 +584,8 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 #endif
 }
 
-uint64_t generate_random_number(void) {
+uint64_t
+generate_random_number(void) {
 	unsigned char	rnd[8];
 	uint64_t	i, r;
 
@@ -717,9 +720,9 @@ static const unsigned char pr2six_url[256] =
 };
 
 
-unsigned int
+static unsigned int
 base64_decode_len_alpha(const char *bufcoded, const char unsigned *alpha);
-unsigned int
+static unsigned int
 base64_decode_len_alpha(const char *bufcoded, const char unsigned *alpha) {
 	int				nbytesdecoded;
 	register const unsigned char	*bufin;
@@ -747,11 +750,11 @@ base64url_decode_len(const char *bufcoded) {
 /* This is the same as apr_base64_decode() except on EBCDIC machines, where
  * the conversion of the output to ebcdic is left out.
  */
-unsigned int 
+static unsigned int 
 base64_decode_binary(unsigned char *bufplain,
 		     const char *bufcoded,
 		     const unsigned char *alpha);
-unsigned int 
+static unsigned int 
 base64_decode_binary(unsigned char *bufplain,
 		     const char *bufcoded,
 		     const unsigned char *alpha)
