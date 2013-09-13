@@ -111,6 +111,7 @@ struct httpsrv_client {
 	httpsrv_headers_t	headers;	/* Inbound headers */
 	bool			close;		/* Close it? */
 	bool			busy;		/* Busy with a request? */
+	bool			keephandling;	/* Keep Handling it? */
 	void			*user;		/* User data */
 
 	httpsrv_client_t	*bodyfwd;	/* Forward the body? */

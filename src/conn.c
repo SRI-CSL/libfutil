@@ -58,14 +58,6 @@ connset_list(connset_t *cs, hlist_t *l) {
 					  "<unknown>")))));
 }
 
-void
-conn_showlist(conn_t *conn) {
-	logline(log_DEBUG_,
-		CONN_ID " list: %s",
-		conn_id(conn),
-		connset_list(conn->connset, conn->connset_l));
-}
-
 static void
 conn_lock(conn_t *conn);
 static void
@@ -1342,14 +1334,14 @@ conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
  * avoids connections to go onto the active list and thus being picked up
  * by another thread.
  *
- * Finalize this with connset_handled()
+ * Finalize this with connset_handling_done()
  *
  * This puts a connection on the handling list.
  */
 static void
-connset_setup_handlingL(conn_t *conn);
+connset_handling_setupL(conn_t *conn);
 static void
-connset_setup_handlingL(conn_t *conn) {
+connset_handling_setupL(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	/* Clear the bits so that select() ignores them */
@@ -1374,15 +1366,15 @@ connset_setup_handlingL(conn_t *conn) {
 }
 
 static void
-connset_setup_handlingA(conn_t *conn);
+connset_handling_setupA(conn_t *conn);
 static void
-connset_setup_handlingA(conn_t *conn) {
+connset_handling_setupA(conn_t *conn) {
 	/* Lock her up */
 	conn_lock(conn);
 	connset_lock(conn->connset);
 
 	/* Locked, make magic happen */
-	connset_setup_handlingL(conn);
+	connset_handling_setupL(conn);
 
 	/* Release her */
 	connset_unlock(conn->connset);
@@ -1390,7 +1382,7 @@ connset_setup_handlingA(conn_t *conn) {
 }
 
 void
-connset_setup_handling(conn_t *conn) {
+connset_handling_setup(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID, conn_id(conn));
 
 	/* Lock her up */
@@ -1405,7 +1397,7 @@ connset_setup_handling(conn_t *conn) {
 	/* Fake that it was on the ready list */
 	conn->connset_l = &conn->connset->ready;
 
-	connset_setup_handlingL(conn);
+	connset_handling_setupL(conn);
 
 	/* Release her */
 	connset_unlock(conn->connset);
@@ -1418,7 +1410,7 @@ connset_get_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_getnext(&cs->ready);
 	if (conn != NULL) {
-		connset_setup_handlingA(conn);
+		connset_handling_setupA(conn);
 	}
 
 	return (conn);
@@ -1430,15 +1422,15 @@ connset_get_one_ready(connset_t *cs) {
 
 	conn = (conn_t *)list_pop(&cs->ready);
 	if (conn != NULL) {
-		connset_setup_handlingA(conn);
+		connset_handling_setupA(conn);
 	}
 
 	return (conn);
 }
 
-/* Paired with a conn_get_{one_}ready and thus connset_setup_handling() */
+/* Paired with a conn_get_{one_}ready and thus connset_handling_setup() */
 void
-connset_handled(conn_t *conn) {
+connset_handling_done(conn_t *conn, bool keeplocked) {
 	hlist_t			*l;
 
 	/* Has to be one some list */
@@ -1458,31 +1450,38 @@ connset_handled(conn_t *conn) {
 	/* Should still be on the handling list */
 	assert(conn->connset_l == &conn->connset->handling);
 
-	/* Set the bits correctly so that select() answers again */
-	if (conn->wntevents & CONN_POLLIN) {
-		FD_SET(conn->sock, &conn->connset->fd_read);
-	}
+	if (!keeplocked) {
+		/* Set the bits correctly so that select() answers again */
+		if (conn->wntevents & CONN_POLLIN) {
+			FD_SET(conn->sock, &conn->connset->fd_read);
+		}
 
-	if (conn->wntevents & CONN_POLLOUT) {
-		FD_SET(conn->sock, &conn->connset->fd_write);
-	}
+		if (conn->wntevents & CONN_POLLOUT) {
+			FD_SET(conn->sock, &conn->connset->fd_write);
+		}
 
-	/* Place it back on the active/inactive list */
-	if (conn->wntevents == CONN_POLLNONE) {
-		l = &conn->connset->inactive;
+		/* Place it back on the active/inactive list */
+		if (conn->wntevents == CONN_POLLNONE) {
+			l = &conn->connset->inactive;
+		} else {
+			l = &conn->connset->active;
+		}
+
+		/* Put it on the right list */
+		list_remove_l(conn->connset_l, &conn->node);
+		conn->connset_l = l;
+		list_addtail_l(l, &conn->node);
+
+		logline(log_DEBUG_,
+				CONN_ID " new list: %s",
+				conn_id(conn),
+				connset_list(conn->connset, conn->connset_l));
 	} else {
-		l = &conn->connset->active;
+		logline(log_DEBUG_,
+				CONN_ID " sticking to list: %s",
+				conn_id(conn),
+				connset_list(conn->connset, conn->connset_l));
 	}
-
-	/* Put it on the right list */
-	list_remove_l(conn->connset_l, &conn->node);
-	conn->connset_l = l;
-	list_addtail_l(l, &conn->node);
-
-	logline(log_DEBUG_,
-		CONN_ID " done, list: %s",
-		conn_id(conn),
-		connset_list(conn->connset, conn->connset_l));
 
 	if (conn->posthandle_f) {
 		conn->posthandle_f(conn, conn->posthandle_u);

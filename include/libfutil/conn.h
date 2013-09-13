@@ -103,8 +103,6 @@ bool conn_init(conn_t *conn, void *clientdata);
 void conn_destroy(conn_t *conn);
 void conn_close(conn_t *conn);
 
-void conn_showlist(conn_t *conn);
-
 bool conn_create_listen(connset_t *connset, const char *hostname,
 			uint32_t protocol, uint32_t port);
 
@@ -209,8 +207,8 @@ int connset_poll(connset_t *cs);
 
 conn_t *connset_get_one_ready(connset_t *cs);
 conn_t *connset_get_ready(connset_t *cs);
-void connset_setup_handling(conn_t *conn);
-void connset_handled(conn_t *conn);
+void connset_handling_setup(conn_t *conn);
+void connset_handling_done(conn_t *conn, bool keephandling);
 void conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user);
 
 /* connset_poll() returns: < 0: error, 0: timeout, >0: ready sockets */

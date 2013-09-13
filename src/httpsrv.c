@@ -187,15 +187,25 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 	uint64_t	len;
 	int		i;
 
+	logline(log_DEBUG_,
+		HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
+		" BodyFwd",
+		hcl->id,
+		conn_id(&hcl->conn),
+		hcl->bodyfwd->id,
+		conn_id(&hcl->bodyfwd->conn));
+
 	/* Copy some more */
 	len = conn_copym(&hcl->conn,
 			&hcl->bodyfwd->conn,
 			hcl->bodyfwd_len);
 
 	logline(log_DEBUG_,
-		HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd %" PRIu64,
+		HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
+		" BodyFwd %" PRIu64,
 		hcl->id,
 		conn_id(&hcl->conn),
+		hcl->bodyfwd->id,
 		conn_id(&hcl->bodyfwd->conn),
 		len);
 
@@ -226,12 +236,12 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 	if (hcl->bodyfwd_len == 0 || len == 0) {
 
 		logline(log_DEBUG_,
-			HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Done",
+			HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
+			" BodyFwd Done",
 			hcl->id,
 			conn_id(&hcl->conn),
+			hcl->bodyfwd->id,
 			conn_id(&hcl->bodyfwd->conn));
-
-		connset_setup_handling(&hcl->bodyfwd->conn);
 
 		/* Inform the caller */
 		fassert(hcl->hs->bodyfwd_done);
@@ -246,7 +256,7 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 			conn_id(&hcl->bodyfwd->conn));
 
 		httpsrv_done(hcl->bodyfwd);
-		connset_handled(&hcl->bodyfwd->conn);
+		connset_handling_done(&hcl->bodyfwd->conn, false);
 
 		/* Handled it */
 		hcl->bodyfwd = NULL;
@@ -327,8 +337,8 @@ httpsrv_handle_http_readbody(httpsrv_client_t *hcl) {
 		done = hcl->hs->handle(hcl, hcl->user);
 
 		logline(log_DEBUG_,
-			HCL_ID " handling body complete",
-			hcl->id);
+			HCL_ID " handling body complete (done:%s)",
+			hcl->id, yesno(done));
 
 		if (done) {
 			return (true);
@@ -488,8 +498,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			done = hcl->hs->handle(hcl, hcl->user);
 
 			logline(log_DEBUG_,
-				HCL_ID " handling complete",
-				hcl->id);
+				HCL_ID " handling complete (done: %s)",
+				hcl->id, yesno(done));
 
 			/* Next */
 			if (done)
@@ -561,6 +571,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 void
 httpsrv_done(httpsrv_client_t *hcl) {
+	assert(hcl->keephandling == false);
+
 	/* Skip remaining content_length */
 	hcl->skipbody_len = hcl->headers.content_length;
 	hcl->headers.content_length = 0;
@@ -607,6 +619,7 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	/* Reset */
 	hcl->close = false;
 	hcl->busy = false;
+	hcl->keephandling = false;
 
 	/* Should be clean before landing here */
 	assert(hcl->bodyfwd == NULL && hcl->bodyfwd_len == 0);
@@ -961,24 +974,31 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 	httpsrv_client_t	*hcl;
 	bool			r;
 
-	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
+	logline(log_DEBUG_,
+		"[hs%" PRIu64 "] l:" CONN_ID,
+		hs->id, conn_id(lconn));
 
 	hcl = httpsrv_newcl(hs);
 
 	/* Accept the socket */
 	if (!conn_accept(&hcl->conn, lconn, hcl)) {
 		logline(log_NOTICE_,
-			HCL_ID " conn_accept()",
-			hcl->id);
+			HCL_ID " l:" CONN_ID " conn_accept()",
+			hcl->id, conn_id(lconn));
 
 		r = httpsrv_client_close(hcl, true);
 		if (!r) {
 			logline(log_NOTICE_,
-				HCL_ID " Could not close HCL on accept",
-				hcl->id);
+				HCL_ID " l:" CONN_ID
+				" Could not close HCL on accept",
+				hcl->id, conn_id(lconn));
 		}
 		return;
 	}
+
+	logline(log_NOTICE_,
+		HCL_ID " l:" CONN_ID " accepted " CONN_ID,
+		hcl->id, conn_id(lconn), conn_id(&hcl->conn));
 
 	/* Register this session in our sessions list */
 	list_addtail_l(&hs->sessions, &hcl->node);
@@ -1084,6 +1104,7 @@ httpsrv_worker_thread(void *context) {
 	httpsrv_t		*hs = (httpsrv_t *)context;
 	conn_t			*conn;
 	httpsrv_client_t	*hcl;
+	bool			k;
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "] context", hs->id);
 
@@ -1145,7 +1166,8 @@ httpsrv_worker_thread(void *context) {
 					hcl->id, conn_id(conn));
 
 				/* Handling needs to be done */
-				connset_handled(conn);
+				assert(hcl->keephandling == false);
+				connset_handling_done(conn, false);
 
 				if (httpsrv_client_close(hcl, false)) {
 					/* It really is gone */
@@ -1164,12 +1186,21 @@ httpsrv_worker_thread(void *context) {
 		}
 
 		if (conn != NULL) {
+			if (hcl) {
+				k = hcl->keephandling;
+				hcl->keephandling = false;
+			} else {
+				k = false;
+			}
+
 			/* Processed the event */
 			logline(log_DEBUG_,
-				CONN_ID " processed",
-				conn_id(conn));
+				CONN_ID " processed (keephandling=%s,new=%s)",
+				conn_id(conn),
+				hcl != NULL ? yesno(k) : "nohcl",
+				hcl != NULL ? yesno(hcl->keephandling) : "nohcl");
 
-			connset_handled(conn);
+			connset_handling_done(conn, k);
 		}
 	}
 
