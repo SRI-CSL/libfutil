@@ -1038,6 +1038,11 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 		logline(log_DEBUG_,
 			HCL_ID " " CONN_ID " Remote closed connection (%d)",
 			hcl->id, conn_id(&hcl->conn), i);
+
+		/* It is broken, nothing else to do with it*/
+		conn_events(&hcl->conn, CONN_POLLNONE);
+
+		/* Mark it for closing */
 		httpsrv_close(hcl);
 	} else {
 		if (hcl->busy) {
