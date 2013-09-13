@@ -5,15 +5,15 @@
 #define DD(x) x
 
 /* List of all the threads */
-hlist_t *l_threads = NULL;
+static hlist_t *l_threads = NULL;
 #ifndef _WIN32
-mutex_t l_tmutex = PTHREAD_MUTEX_INITIALIZER;
+static mutex_t l_tmutex = PTHREAD_MUTEX_INITIALIZER;
 #else
-mutex_t l_tmutex;
+static mutex_t l_tmutex;
 #endif
-bool l_keep_running = true;
+static bool l_keep_running = true;
 
-const char *ts_names[20] = {
+static const char *ts_names[20] = {
 	"dying",
 	"running",
 	"sleeping",
@@ -24,16 +24,22 @@ const char *ts_names[20] = {
 };
 
 static void
+thread_lock(mythread_t *t);
+static void
 thread_lock(mythread_t *t) {
 	mutex_lock(t->mutex);
 }
 
+static void
+thread_unlock(mythread_t *t);
 static void
 thread_unlock(mythread_t *t) {
 	mutex_unlock(t->mutex);
 }
 
 #ifndef _WIN32
+static void
+thread_signal(int i);
 static void
 thread_signal(int i) {
 	/* Ignore the signal, we might otherwise be in this function twice... */
@@ -46,6 +52,8 @@ thread_signal(int i) {
 	signal(i, &thread_signal);
 }
 #else
+static bool
+thread_signal(DWORD UNUSED sig);
 static bool
 thread_signal(DWORD UNUSED sig) {
 	logline(log_ERR_, "Terminating due to CTRL event");
@@ -136,9 +144,9 @@ thread_getthis(void) {
  * This is automatically called by the threading
  * code when it returns from the calling function
 */
-void
+static void
 thread_remove(mythread_t *t);
-void
+static void
 thread_remove(mythread_t *t) {
 
 	fassert(t);
@@ -148,9 +156,9 @@ thread_remove(mythread_t *t) {
 	list_remove_l(l_threads, &t->node);
 }
 
-void
+static void
 thread_destroy(mythread_t *t);
-void
+static void
 thread_destroy(mythread_t *t) {
 	mfreestrdup(t->description, "thread_description");
 
@@ -276,9 +284,9 @@ thread_autoremove(void *arg);
 static void *
 thread_autoremove(void *arg) {
 #else
-DWORD WINAPI
+static DWORD WINAPI
 thread_autoremove(LPVOID arg);
-DWORD WINAPI
+static DWORD WINAPI
 thread_autoremove(LPVOID arg) {
 #endif
 	mythread_t	*t = (mythread_t *)arg;
