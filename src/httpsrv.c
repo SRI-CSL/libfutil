@@ -57,12 +57,10 @@ httpsrv_set_userdata(httpsrv_client_t *hcl, void *user) {
 }
 
 void
-httpsrv_set_posthandle_hook(conn_t *conn, void *user);
+httpsrv_set_posthandle_hook(conn_t UNUSED *conn, void *user);
 void
-httpsrv_set_posthandle_hook(conn_t *conn, void *user) {
+httpsrv_set_posthandle_hook(conn_t UNUSED *conn, void *user) {
 	httpsrv_client_t *hcl = (httpsrv_client_t *)user;
-
-	fassert(conn == &hcl->conn);
 
 	hcl->posthandle(hcl);
 }
