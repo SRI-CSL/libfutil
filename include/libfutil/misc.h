@@ -362,4 +362,6 @@ bool steg_decode(const char *src, unsigned int srclen,
 
 #define yesno(q) (q ? "yes" : "no")
 
+bool human_size(uint64_t n, char *buf, unsigned int buflen);
+
 #endif /* MISC_H */

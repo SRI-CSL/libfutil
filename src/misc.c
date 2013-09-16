@@ -1437,3 +1437,26 @@ steg_decode(const char *src, unsigned int srclen,
 	return (true);
 }
 
+bool
+human_size(uint64_t n, char *buf, unsigned int buflen) {
+	static const char	sizes[] = " KMGTPEZY";
+	unsigned int		s;
+	int			r;
+
+	for (s = 0; s < lengthof(sizes) && n >= (100 * 1024); s++) {
+		n /= 1024;
+	}
+
+	if (s == 0) {
+		r = snprintf(buf, buflen,
+			 "%" PRIu64 " B",
+			 n);
+	} else {
+		r = snprintf(buf, buflen,
+			 "%" PRIu64 " %ciB",
+			 n, sizes[s]);
+	}
+
+	return (snprintfok(r, buflen));
+}
+

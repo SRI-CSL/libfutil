@@ -1157,7 +1157,7 @@ connset_poll(connset_t *cs) {
 		timeout.tv_usec = 0;
 #else
 		timeout.tv_sec = 0;
-		timeout.tv_usec = (100 * 1000);
+		timeout.tv_usec = (10);
 #endif
 
 		thread_setstate(thread_state_select);
