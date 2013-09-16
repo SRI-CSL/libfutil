@@ -13,3 +13,7 @@ src/db/*.d
 src/rfc6234/*.o
 src/rfc6234/*.d
 
+tests/test
+tests/*.o
+tests/*.d
+
