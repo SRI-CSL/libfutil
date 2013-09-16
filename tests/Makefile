@@ -141,15 +141,14 @@ else
 $(error Unknown number of bits: $(OS_BITS))
 endif
 endif
-
-else
+endif # PROJECT_NAME != libfutil
 
 # Location of libfutil
+ifeq ($(LIBFUTIL),)
 LIBFUTIL:=../
 OBJFUTIL:=$(LIBFUTIL)src/
 CFLAGS  += -I$(LIBFUTIL)include/
-
-endif # PROJECT_NAME != libfutil
+endif
 
 # Prettifiers
 LINK	= @echo "* Linking $@"; $(CC) $(CFLAGS) $(LDFLAGS)
