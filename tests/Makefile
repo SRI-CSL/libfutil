@@ -2,6 +2,8 @@ ifndef PROJECT_NAME
 $(error Run this make from the root, aka one level up)
 endif
 
+ifeq ($(PROJECT_NAME),libfutil)
+
 # Which OS is this? Can be overriden by setting it first
 # eg to compile Windows edition on another platform use: $ make OS_NAME=Windows
 ifeq ($(OS_NAME),)
@@ -83,11 +85,6 @@ CFLAGS	+=	-pedantic
 # Enable GNU features (needed for our use of pthreads etc)
 CFLAGS  +=	-D_GNU_SOURCE
 
-# Location of libfutil
-LIBFUTIL:=../
-OBJFUTIL:=$(LIBFUTIL)src/
-CFLAGS  += -I$(LIBFUTIL)include/
-
 # Linux
 ifeq ($(OS_NAME),Linux)
 CFLAGS	+= -D_LINUX
@@ -152,6 +149,15 @@ CFLAGS+=-arch x86_64
 LDFLAGS+=-arch x86_64
 endif
 endif
+
+else
+
+# Location of libfutil
+LIBFUTIL:=../
+OBJFUTIL:=$(LIBFUTIL)src/
+CFLAGS  += -I$(LIBFUTIL)include/
+
+endif # PROJECT_NAME != libfutil
 
 # Prettifiers
 LINK	= @echo "* Linking $@"; $(CC) $(CFLAGS) $(LDFLAGS)

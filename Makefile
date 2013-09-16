@@ -1,4 +1,8 @@
+# Programs using libfutil will set the project name
+# Having it set avoids CFLAGS/LDFLAGS changes
+ifndef PROJECT_NAME
 PROJECT_NAME=libfutil
+endif
 
 # Debug build
 CFLAGS += -DDEBUG
