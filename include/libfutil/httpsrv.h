@@ -163,5 +163,11 @@ void httpsrv_readbody_free(httpsrv_client_t *hcl);
 
 void httpsrv_sessions(httpsrv_client_t *hcl);
 
+/* None, 10 minutes, 24 hours */
+#define HTTPSRV_EXPIRE_NONE	(0)
+#define HTTPSRV_EXPIRE_SHORT	(60*10)
+#define HTTPSRV_EXPIRE_LONG	(60*60*24)
+void httpsrv_expire(httpsrv_client_t *hcl, unsigned int maxage);
+
 #endif /* HTTPSRV_H */
 

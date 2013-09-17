@@ -114,6 +114,72 @@ httpsrv_client_close(httpsrv_client_t *hcl, bool force) {
 }
 
 static void
+httpsrv_http_headertime(httpsrv_client_t *hcl, const char *header, time_t t);
+static void
+httpsrv_http_headertime(httpsrv_client_t *hcl, const char *header, time_t t) {
+	static const char days[7][4] =
+			{ "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	static const char mons[12][4] =
+			{ "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+			  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	struct tm	tm;
+
+	gmtime_r(&t, &tm);
+
+	conn_addheaderf(&hcl->conn,
+			"%s: %s, %u %s %u %u:%u:%u GMT",
+			header,
+			days[tm.tm_wday],
+			tm.tm_mday,
+			mons[tm.tm_mon],
+			tm.tm_year + 1900,
+			tm.tm_hour,
+			tm.tm_min,
+			tm.tm_sec);
+}
+
+void
+httpsrv_expire(httpsrv_client_t *hcl, unsigned int maxage) {
+	time_t		t;
+
+	t = time(NULL);
+
+	if (maxage == 0)
+	{
+		/* Always force expire this URI / do not cache */
+
+		/* Always modified */
+		httpsrv_http_headertime(hcl, "Last-Modified", t);
+
+		/* Date in the far past
+		 * (over 9M hits on google for this string :)
+		 */
+		conn_addheader(&hcl->conn,
+				"Expires: Thu, 29 Oct 1998 17:04:19 GMT");
+
+		/* HTTP/1.1 style */
+		conn_addheader(&hcl->conn,
+				"Cache-Control: public, no-cache, "
+				"no-store, must-revalidate");
+	}
+	else
+	{
+		/* Do not expire this for another maxage seconds */
+
+		/* Last modified some time ago */
+		httpsrv_http_headertime(hcl, "Last-Modified", t);
+
+		/* Expires in the future */
+		httpsrv_http_headertime(hcl, "Expires", t + maxage);
+
+		/* HTTP/1.1 style */
+		conn_addheaderf(&hcl->conn,
+				"Cache-Control: max-age=%u",
+				maxage);
+	}
+}
+
+static void
 httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg);
 static void
 httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
