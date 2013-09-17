@@ -353,6 +353,8 @@ httpsrv_handle_http_readbody(httpsrv_client_t *hcl) {
 }
 
 static void
+httpsrv_handle_http(httpsrv_client_t *hcl);
+static void
 httpsrv_handle_http(httpsrv_client_t *hcl) {
 	char		line[4096];
 	int		i;
