@@ -72,7 +72,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 	const char *format, va_list ap)
 {
 	static uint64_t	id_p = 0;
-	const char	*name = getprioname(level);
+	static unsigned int level_p = 0;
 	uint64_t	id = getthisthreadid(), msec;
 	int64_t		maxlogsize = (100 * 1024 * 1024);
 	struct stat	st;
@@ -108,7 +108,16 @@ logitVA(unsigned int level, const char UNUSED *file,
 		vfprintf(stderr, format, ap);
 #endif
 	} else {
-		char t[32];
+		char t[32], ln[8];
+
+		/* Skip repeated levels */
+		if (level == level_p) {
+			memset(ln, ' ', sizeof ln);
+		} else {
+			level_p = level;
+			snprintf(ln, sizeof ln, "%s",
+				 getprioname(level));
+		}
 
 		/* Skip repeated thread id's */
 		snprintf(t, sizeof t, THREAD_ID, id);
@@ -125,19 +134,18 @@ logitVA(unsigned int level, const char UNUSED *file,
 
 		fprintf(l_log_output,
 #ifdef SAFDEF_LOG_LONG
-			"%4u-%02u-%02u %02u:%02u:%02u.%03" PRIu64 " %s "
+			"%4u-%02u-%02u %02u:%02u:%02u.%03" PRIu64 " "
 #else
 			"%" PRIu64 " "
 #endif
-			"%-5s %s %s() ",
+			"%-8s %s %s() ",
 #ifdef SAFDEF_LOG_LONG
 			teem.tm_year+1900, teem.tm_mon+1, teem.tm_mday,
 			teem.tm_hour, teem.tm_min, teem.tm_sec, msec,
-			l_log_name ? l_log_name : "daemon",
 #else
 			tm,
 #endif
-			name, t, caller);
+			ln, t, caller);
 		vfprintf(l_log_output, format, ap);
 		fprintf(l_log_output, "\n");
 		fflush(l_log_output);
