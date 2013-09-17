@@ -1040,6 +1040,9 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 		/* It is broken, nothing else to do with it*/
 		conn_events(&hcl->conn, CONN_POLLNONE);
 
+		/* Close the connection, it is gone */
+		conn_close(conn);
+
 		/* Mark it for closing */
 		httpsrv_close(hcl);
 	} else {
@@ -1174,8 +1177,13 @@ httpsrv_worker_thread(void *context) {
 					HCL_ID " " CONN_ID " was closed",
 					hcl->id, conn_id(conn));
 
-				/* Don't do anything with this anymore */
-				conn_events(&hcl->conn, CONN_POLLNONE);
+				/*
+				 * Don't do anything with this anymore
+				 * Might be closed already here
+				 */
+				if (conn_is_valid(&hcl->conn)) {
+					conn_events(&hcl->conn, CONN_POLLNONE);
+				}
 
 				/* Handling needs to be done */
 				fassert(hcl->keephandling == false);
