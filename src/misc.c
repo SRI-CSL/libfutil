@@ -72,7 +72,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 	const char *format, va_list ap)
 {
 	static uint64_t	id_p = 0;
-	static unsigned int level_p = 0;
+	static unsigned int level_p = -1;
 	uint64_t	id = getthisthreadid(), msec;
 	int64_t		maxlogsize = (100 * 1024 * 1024);
 	struct stat	st;
@@ -108,11 +108,14 @@ logitVA(unsigned int level, const char UNUSED *file,
 		vfprintf(stderr, format, ap);
 #endif
 	} else {
-		char t[32], ln[8];
+		char t[32], ln[9];
+		unsigned int i;
 
 		/* Skip repeated levels */
 		if (level == level_p) {
-			memset(ln, ' ', sizeof ln);
+			i = sizeof ln;
+			memset(ln, ' ', i);
+			ln[i - 1] = '\0';
 		} else {
 			level_p = level;
 			snprintf(ln, sizeof ln, "%s",
@@ -123,7 +126,9 @@ logitVA(unsigned int level, const char UNUSED *file,
 		snprintf(t, sizeof t, THREAD_ID, id);
 
 		if (id == id_p) {
-			memset(t, ' ', strlen(t));
+			i = strlen(t);
+			memset(t, ' ', i);
+			t[i] = '\0';
 		} else {
 			id_p = id;
 		}
