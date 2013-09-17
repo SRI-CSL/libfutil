@@ -71,6 +71,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 	unsigned int UNUSED line, const char *caller,
 	const char *format, va_list ap)
 {
+	static uint64_t	id_p = 0;
 	const char	*name = getprioname(level);
 	uint64_t	id = getthisthreadid(), msec;
 	int64_t		maxlogsize = (100 * 1024 * 1024);
@@ -107,6 +108,17 @@ logitVA(unsigned int level, const char UNUSED *file,
 		vfprintf(stderr, format, ap);
 #endif
 	} else {
+		char t[32];
+
+		/* Skip repeated thread id's */
+		snprintf(t, sizeof t, THREAD_ID, id);
+
+		if (id == id_p) {
+			memset(t, ' ', strlen(t));
+		} else {
+			id_p = id;
+		}
+
 		/* Include the time in the log */
 		tm = gettimes(&msec);
 		localtime_r(&tm, &teem);
@@ -117,9 +129,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 #else
 			"%" PRIu64 " "
 #endif
-			"%-5s "
-			THREAD_ID
-			" %s() ",
+			"%-5s %s %s() ",
 #ifdef SAFDEF_LOG_LONG
 			teem.tm_year+1900, teem.tm_mon+1, teem.tm_mday,
 			teem.tm_hour, teem.tm_min, teem.tm_sec, msec,
@@ -127,7 +137,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 #else
 			tm,
 #endif
-			name, id, caller);
+			name, t, caller);
 		vfprintf(l_log_output, format, ap);
 		fprintf(l_log_output, "\n");
 		fflush(l_log_output);
