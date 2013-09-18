@@ -690,7 +690,6 @@ httpsrv_done(httpsrv_client_t *hcl) {
 
 	/* Reset */
 	hcl->close = false;
-	hcl->busy = false;
 	hcl->keephandling = false;
 
 	/* Should be clean before landing here */
@@ -1114,13 +1113,6 @@ httpsrv_receive(httpsrv_client_t *hcl, conn_t *conn) {
 		/* Mark it for closing */
 		httpsrv_close(hcl);
 	} else {
-		if (hcl->busy) {
-			logline(log_DEBUG_,
-				HCL_ID " " CONN_ID " Busy processing request",
-				hcl->id, conn_id(&hcl->conn));
-			return;
-		}
-
 		/* HTTP Connection */
 		logline(log_DEBUG_,
 			HCL_ID " " CONN_ID " Try to parse some lines",
