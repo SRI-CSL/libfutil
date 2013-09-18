@@ -1014,7 +1014,7 @@ strerror_r(int errnum, char *strerrbuf, size_t buflen) {
 #endif /* _WIN32 */
 
 #define DUMPPACKET_PERLINE	16
-#define DUMPPACKET_LINES	8
+#define DUMPPACKET_LINES	32
 #define DUMPPACKET_MAX		(DUMPPACKET_PERLINE * DUMPPACKET_LINES)
 void
 dumppacket(int level, const uint8_t *packet, uint64_t len) {
