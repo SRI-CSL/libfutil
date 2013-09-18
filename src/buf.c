@@ -50,7 +50,7 @@ buf_destroy(buf_t *buf) {
 }
 
 /* Empty the buffer, making it ready for re-use */
-void 
+void
 buf_empty(buf_t *buf) {
 	if (buf->buf)
 		memzero(buf->buf, buf->offset);

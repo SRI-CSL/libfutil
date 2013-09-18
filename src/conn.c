@@ -955,7 +955,7 @@ static void
 conn_set_connset(conn_t *conn, connset_t *cs) {
 	uint16_t events = conn->wntevents;
 
-	/* 
+	/*
 	 * With a connset it is a non-blocking socket
 	 * Without a connset it is a blocking socket
 	 */
@@ -1360,7 +1360,7 @@ connset_handling_setupL(conn_t *conn) {
 	conn->connset_l = &conn->connset->handling;
 	list_addtail_l(&conn->connset->handling, &conn->node);
 
-	logline(log_DEBUG_, 
+	logline(log_DEBUG_,
 		CONN_ID " done, list: handling",
 		conn_id(conn));
 }
@@ -1641,7 +1641,7 @@ conn_ssl_flush(conn_t *conn) {
 
 		memmove(&conn->ssl_out, &conn->ssl_out[r], left);
 
-		conn->ssl_out_len = left; 
+		conn->ssl_out_len = left;
 
 		/* Our work is done for now, try again later */
 		return (false);
@@ -1732,7 +1732,7 @@ conn_ssl_bio_read(conn_t *conn) {
 	logline(log_DEBUG_, CONN_ID "", conn_id(conn));
 
 	/*
-	 * data[p] -> SSL_write() -> BIO_read -> ssl_out[c] -> socket 
+	 * data[p] -> SSL_write() -> BIO_read -> ssl_out[c] -> socket
 	 *
 	 * We passed our buffer to SSL_write() which crypts data that
 	 * the result of which ends up in bio_out,
@@ -2261,7 +2261,7 @@ conn_flush(conn_t *conn) {
 #ifdef NETWORK_DETAILS
 			conn_addheaderf(conn,
 				"CONN-Content-CONN-Length: %" PRIu64,
-				len_b));
+				len_b);
 #endif
 
 			if (conn->real_contentlen != 0) {

@@ -639,13 +639,13 @@ base64url_encode_len(unsigned int len) {
 }
 
 unsigned int
-base64_encode_binary_alpha(char *encoded, 
+base64_encode_binary_alpha(char *encoded,
 			   const unsigned char *str,
 			   unsigned int len,
 			   const char *alphabet,
 			   const char pad);
 unsigned int
-base64_encode_binary_alpha(char *encoded, 
+base64_encode_binary_alpha(char *encoded,
 			   const unsigned char *str,
 			   unsigned int len,
 			   const char *alphabet,
@@ -773,11 +773,11 @@ base64url_decode_len(const char *bufcoded) {
 /* This is the same as apr_base64_decode() except on EBCDIC machines, where
  * the conversion of the output to ebcdic is left out.
  */
-static unsigned int 
+static unsigned int
 base64_decode_binary(unsigned char *bufplain,
 		     const char *bufcoded,
 		     const unsigned char *alpha);
-static unsigned int 
+static unsigned int
 base64_decode_binary(unsigned char *bufplain,
 		     const char *bufcoded,
 		     const unsigned char *alpha)
@@ -907,7 +907,7 @@ inet_rtop(struct addrinfo *res, char *buf, unsigned int buflen) {
 			res6.sin6_port : res4.sin_port),
 		 family_name(res->ai_family),
 		 socktype_name(res->ai_socktype), res->ai_socktype);
-} 
+}
 
 #ifdef _WIN32
 const char *
@@ -929,7 +929,7 @@ inet_ntop(int af, const void *src, char *dst, socklen_t cnt) {
 		in.sin6_family = AF_INET6;
 		memcpy(&in.sin6_addr, src, sizeof in.sin6_addr);
 		getnameinfo((struct sockaddr *)&in,
-			    sizeof in, 
+			    sizeof in,
 			    dst, cnt, NULL, 0, NI_NUMERICHOST);
 		return (dst);
 	}
@@ -1137,7 +1137,7 @@ dumppacket(int level, const uint8_t *packet, uint64_t len) {
 
 /*
  * Parse a time in the format:
- *  1996-12-19T16:39:57-08:00 
+ *  1996-12-19T16:39:57-08:00
  *  1990-12-31T23:59:60Z
  *
  * Manual parse as strptime() is not available on all platforms

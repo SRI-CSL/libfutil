@@ -42,7 +42,7 @@ rwl_lockR(rwl_t *l) {
 	}
 }
 
-void 
+void
 rwl_unlockR(rwl_t *l) {
 	fassert(l);
 	fassert(l->readers > 0);
