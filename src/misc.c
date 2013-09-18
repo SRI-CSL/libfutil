@@ -27,6 +27,22 @@ log_setup(const char *name, FILE *f) {
 	l_log_output = f;
 }
 
+void
+log_chown(uid_t uid, gid_t gid) {
+	mutex_lock(l_mutex);
+
+#ifndef _WIN32
+	if (l_log_output != NULL) {
+		fchown(fileno(l_log_output), uid, gid);
+	}
+#else
+	uid = uid;
+	gid = gid;
+#endif
+
+	mutex_unlock(l_mutex);
+}
+
 bool
 log_set(const char *filename) {
 	FILE	*f;

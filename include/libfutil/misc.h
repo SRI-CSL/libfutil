@@ -34,6 +34,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <sys/syscall.h>
+#include <pwd.h>
 
 #define INVALID_SOCKET		-1
 typedef int64_t			socket_t;
@@ -244,6 +245,7 @@ typedef void (*logfunc_f)(unsigned int level, const char *file, unsigned int lin
 
 
 bool log_set(const char *filename);
+void log_chown(uid_t uid, gid_t gid);
 void log_setup(const char *name, FILE *f);
 void log_setlevel(unsigned int level);
 void log_setfunc(logfunc_f func);

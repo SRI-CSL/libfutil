@@ -12,6 +12,7 @@ static mutex_t l_tmutex = PTHREAD_MUTEX_INITIALIZER;
 static mutex_t l_tmutex;
 #endif
 static bool l_keep_running = true;
+static char *l_pidfile = NULL;
 
 static const char *ts_names[20] = {
 	"dying",
@@ -490,6 +491,11 @@ thread_exit(void) {
 	mfree(l_threads, sizeof *l_threads, "l_threads");
 	l_threads = NULL;
 
+	if (l_pidfile) {
+		unlink(l_pidfile);
+		l_pidfile = NULL;
+	}
+
 	logline(log_DEBUG_, "done");
 
 	mutex_destroy(l_tmutex);
@@ -579,16 +585,30 @@ thread_keep_running(void) {
  * >0 for child, this can keep on running
  */
 int
-thread_daemonize(const char *pidfile) {
+thread_daemonize(const char *pidfile, const char *username) {
 #ifndef _WIN32
 	os_thread_id	tid = getthisthreadid();
 	mythread_t	*t, *tn;
-	FILE		*f;
+	FILE		*f = NULL;
 	int		ret, pid;
 	unsigned int	cnt = 0;
+	struct passwd	*pw;
+	uid_t		uid;
+	gid_t		gid;
 
 	/* We should be initialized */
 	assert(l_threads != NULL);
+
+	/* If there is a username, try and look it up */
+	if (username != NULL) {
+		if ((pw = getpwnam(username))) {
+			uid = pw->pw_uid;
+			gid = pw->pw_gid;
+		} else {
+			logline(log_ERR_, "No such user '%s'", username);
+		}
+
+	}
 
 	/* How many threads are there? */
 	list_lock(l_threads);
@@ -625,6 +645,7 @@ thread_daemonize(const char *pidfile) {
 	}
 
 	thread_destroy(t);
+	list_unlock(l_threads);
 
 	/* threads_list is now empty */
 
@@ -664,22 +685,63 @@ thread_daemonize(const char *pidfile) {
 	pid = getpid();
 
 	/* Store the PID if needed */
-	if (pidfile != NULL) {
+	if (pidfile != NULL && strlen(pidfile) > 0) {
 		f = fopen(pidfile, "w");
 		if (!f)
 		{
-			logline(log_CRIT_, "Could not store PID in file %s", pidfile);
+			logline(log_CRIT_,
+				 "Could not store PID in file %s",
+				pidfile);
 			return (-1);
+		}
+
+		/* Force the correct uid/gid, otherwise we can't remove it later */
+		if (username != NULL) {
+			fchown(fileno(f), uid, gid);
 		}
 
 		fprintf(f, "%d", pid);
 		fclose(f);
+
+		/* Retain the name for later cleanup */
+		l_pidfile = strdup(pidfile);
 	}
 
-	logline(log_INFO_, "Running as PID %d", pid);
+	/* Change our user ID */
+	if (username != NULL) {
+		/* Make sure that the log file is also of this user */
+		log_chown(uid, gid);
+
+#if defined(_LINUX) || defined(_FREEBSD)
+		/* This makes sure there is no way back */
+		if (setresgid(gid, gid, gid) < 0) {
+			logline(log_CRIT_,
+				"setresgid(group of %s) failed",
+				username);
+			return (-1);
+		}
+
+		if (setresuid(uid, uid, uid) < 0) {
+			logline(log_CRIT_,
+				"setresuid(%s) failed",
+				username);
+			return (-1);
+		}
 #else
-	logline(log_NOTICE_, "Can't daemonize on Windows");
+		setgid(gid);
+		setuid(uid);
+#endif /* _LINUX */
+	}
+
+	uid = getuid();
+	gid = getgid();
+
+	logline(log_INFO_, "Running as PID %d (user %u:%u)", pid, uid, gid);
+
+#else
+	logline(log_NOTICE_, "Can't daemonize or suid on Windows");
 	pidfile = pidfile;
+	username = username;
 #endif
 
 	return (1);
