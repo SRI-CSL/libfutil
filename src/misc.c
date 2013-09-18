@@ -1012,8 +1012,10 @@ futil_daemonize(const char *pidfile) {
 	}
 
 	/* Exit the mother fork */
-	if (pid != 0)
-		return (0);
+	if (pid != 0) {
+		/* Fully exit */
+		exit(0);
+	}
 
 	/* Child fork */
 	setsid();
