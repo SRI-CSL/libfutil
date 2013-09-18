@@ -46,6 +46,7 @@ void node_init(hnode_t *n);
 void node_destroy(hnode_t *n);
 
 hnode_t *list_pop(hlist_t *l);
+hnode_t *list_pop_l(hlist_t *l);
 hnode_t *list_getnext(hlist_t *l);
 
 /* Loop through all the items of a list */
