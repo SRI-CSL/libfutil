@@ -67,6 +67,8 @@ bool
 thread_init(void) {
 	fassert(l_threads == NULL);
 
+	logline(log_DEBUG_, "...");
+
 	l_threads = mcalloc(sizeof *l_threads, "l_threads");
 	if (!l_threads) {
 		logline(log_ERR_, "Could not add main thread!?");
@@ -161,6 +163,14 @@ static void
 thread_destroy(mythread_t *t);
 static void
 thread_destroy(mythread_t *t) {
+
+	logline(log_DEBUG_,
+		"Destroying: " THREAD_ID
+		" \"%s\" [%s]",
+		t->thread_id,
+		t->description,
+		ts_names[t->state]);
+
 	mfreestrdup(t->description, "thread_description");
 
 	cond_destroy(t->cond);
@@ -325,6 +335,8 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 {
 	static unsigned int	thread_num = 0;
 	mythread_t		*t;
+
+	logline(log_DEBUG_, "\"%s\"", description);
 
 	/* Allocate a new thread structure */
 	t = (mythread_t *)mcalloc(sizeof *t, "thread");
