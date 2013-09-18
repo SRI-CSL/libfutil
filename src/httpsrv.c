@@ -1068,7 +1068,7 @@ httpsrv_accept(conn_t *lconn, httpsrv_t *hs) {
 		return;
 	}
 
-	logline(log_NOTICE_,
+	logline(log_DEBUG_,
 		HCL_ID " l:" CONN_ID " accepted " CONN_ID,
 		hcl->id, conn_id(lconn), conn_id(&hcl->conn));
 
