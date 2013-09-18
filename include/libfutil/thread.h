@@ -68,6 +68,8 @@ typedef void (*thread_list_f)(void		*cbdata,
 
 unsigned int thread_list(thread_list_f cb, void *cbdata);
 
+int thread_daemonize(const char *pidfile);
+
 void thread_stop_running(void);
 bool thread_keep_running(void);
 

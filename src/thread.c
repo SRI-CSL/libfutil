@@ -572,3 +572,116 @@ thread_keep_running(void) {
 	return (r);
 }
 
+/*
+ * Returns:
+ * <0 for error
+ *  0 for parent, this one should exit in the caller
+ * >0 for child, this can keep on running
+ */
+int
+thread_daemonize(const char *pidfile) {
+#ifndef _WIN32
+	os_thread_id	tid = getthisthreadid();
+	mythread_t	*t, *tn;
+	FILE		*f;
+	int		ret, pid;
+	unsigned int	cnt = 0;
+
+	/* We should be initialized */
+	assert(l_threads != NULL);
+
+	/* How many threads are there? */
+	list_lock(l_threads);
+	list_for(l_threads, t, tn, mythread_t *) {
+		cnt++;
+	}
+
+	if (cnt > 1) {
+		logline(log_CRIT_, "Other threads already running");
+		list_unlock(l_threads);
+		return (-1);
+	}
+
+	if (cnt == 0) {
+		logline(log_CRIT_, "No threads found at all?");
+		list_unlock(l_threads);
+		return (-1);
+	}
+
+	/* Get us */
+	t = (mythread_t *)list_pop_l(l_threads);
+	assert(t != NULL);
+
+	if (t == NULL) {
+		logline(log_CRIT_, "Did the thread leave?");
+		list_unlock(l_threads);
+		return (-1);
+	}
+
+	if (t->thread_id != tid) {
+		logline(log_CRIT_, "Thread was not me?");
+		list_unlock(l_threads);
+		return (-1);
+	}
+
+	thread_destroy(t);
+
+	/* threads_list is now empty */
+
+	/* Daemonize */
+	pid = fork();
+	if (pid < 0) {
+		logline(log_CRIT_, "Couldn't fork");
+		return (-1);
+	}
+
+	/* Exit the mother fork */
+	if (pid != 0) {
+		/* Fully exit */
+		exit(0);
+	}
+
+	/* Child fork */
+	setsid();
+
+	/* Add ourselves again, but now under new PID */
+	if (!thread_add("DaemonMain", NULL, NULL)) {
+		logline(log_ERR_, "Could not add daemon main thread!?");
+		return (false);
+	}
+
+	/* Chdir to root so we don't keep any dir busy */
+	ret = chdir("/");
+	if (ret != 0) {
+		logline(log_CRIT_, "Could not change dir to /");
+		return (-1);
+	}
+
+	/* Cleanup stdin/out/err */
+	if (freopen("/dev/null", "r", stdin)) {}
+	if (freopen("/dev/null", "w", stdout)) {}
+	if (freopen("/dev/null", "w", stderr)) {}
+	pid = getpid();
+
+	/* Store the PID if needed */
+	if (pidfile != NULL) {
+		f = fopen(pidfile, "w");
+		if (!f)
+		{
+			logline(log_CRIT_, "Could not store PID in file %s", pidfile);
+			return (-1);
+		}
+
+		fprintf(f, "%d", pid);
+		fclose(f);
+	}
+
+	logline(log_INFO_, "Running as PID %d", pid);
+#else
+	logline(log_NOTICE_, "Can't daemonize on Windows");
+	pidfile = pidfile;
+#endif
+
+	return (1);
+}
+
