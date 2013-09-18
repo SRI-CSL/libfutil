@@ -44,7 +44,7 @@ typedef int64_t			socket_t;
 
 /* OS Thread & Mutex Abstraction */
 typedef pthread_t		os_thread_t;
-typedef pid_t			os_thread_id;
+typedef uint64_t		os_thread_id;
 typedef pthread_mutex_t		mutex_t;
 typedef pthread_cond_t		cond_t;
 #define getthisthread		pthread_self
@@ -95,7 +95,7 @@ typedef pthread_cond_t		cond_t;
 
 typedef SOCKET			socket_t;
 typedef HANDLE			os_thread_t;
-typedef DWORD			os_thread_id;
+typedef uint64_t		os_thread_id;
 typedef HANDLE			mutex_t;
 typedef HANDLE			cond_t;
 #define getthisthread		GetCurrentThread

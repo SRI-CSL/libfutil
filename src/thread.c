@@ -249,7 +249,7 @@ thread_sleep(unsigned int msec) {
 		logline(log_ERR_,
 			"cond_timedwait(tr%" PRIu64 ", %u) on "
 			"%s returned %u",
-			t->thread_num,
+			t->thread_id,
 			msec,
 			t->description ? t->description : "<no description>",
 			rc);
@@ -264,7 +264,7 @@ static void
 thread_start(mythread_t *t);
 static void
 thread_start(mythread_t *t) {
-	/* Simple identifier (matches LWP on Linux) */
+	/* Simple identifier */
 	t->thread_id = getthisthreadid();
 
 	/* Note the time it started */
@@ -344,12 +344,12 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 	t->state = thread_state_running;
 
 	/* Create the thread if needed (only the 'main' thread should not do this) */
-	if (start_routine) {
+	if (start_routine != NULL) {
 #ifndef _WIN32
 		if (0 != pthread_create(&t->thread, NULL, thread_autoremove, t))
 #else
 		if ((t->thread = CreateThread(NULL, 0, thread_autoremove,
-					      NULL, 0, &t->thread_id)))
+					      NULL, 0, NULL)))
 #endif
 		{
 			logline(log_ERR_,
@@ -417,9 +417,9 @@ thread_stopall(bool force) {
 
 				thread_lock(t);
 				logline(log_DEBUG_,
-					"Still waiting for [tr%" PRIu64 "] "
-					"%s [%s]%s to finish...",
-					t->thread_num,
+					"Still waiting for " THREAD_ID
+					" \"%s\" [%s]%s to finish...",
+					t->thread_id,
 					t->description,
 					ts_names[t->state],
 					t->state != thread_state_running ?
@@ -453,9 +453,9 @@ thread_stopall(bool force) {
 			if (t->thread_id != tid) {
 				thread_lock(t);
 				logline(log_DEBUG_,
-					" Was still running: [tr%" PRIu64 "] "
+					" Was still running: " THREAD_ID
 					" \"%s\" [%s]",
-					t->thread_num,
+					t->thread_id,
 					t->description,
 					ts_names[t->state]);
 				thread_unlock(t);
