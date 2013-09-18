@@ -31,16 +31,20 @@ bool
 log_set(const char *filename) {
 	FILE	*f;
 	bool	ret;
+	int	e;
 
 	mutex_lock(l_mutex);
 
 	f = fopen(filename, "w+");
+	e = errno;
 	if (f) {
 		l_log_filename = filename;
 		l_log_output = f;
 		ret = true;
 	} else {
-		logline(log_ERR_, "Could not open logfile %s", filename);
+		logline(log_ERR_,
+			"Could not open logfile %s: %s (%u)",
+			filename, strerror(e), e);
 		ret = false;
 	}
 
@@ -437,7 +441,8 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 	/* get current time */
 	memzero(timeout, sizeof *timeout);
 	clock_gettime(CLOCK_REALTIME, timeout);
-	timeout->tv_nsec += msec * (1000 * 1000);
+	timeout->tv_sec += msec / 1000;
+	timeout->tv_nsec += (msec % 1000) * (1000 * 1000);
 #else
 	struct timeval now;
 
