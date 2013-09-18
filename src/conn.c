@@ -1160,10 +1160,6 @@ connset_poll(connset_t *cs) {
 		timeout.tv_usec = (100 * 1000);
 #endif
 
-		logline(log_DEBUG_,
-			"i = %d/%u, errno = %d",
-			i, hifd, errsv);
-
 		thread_setstate(thread_state_select);
 		errno = 0;
 		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
