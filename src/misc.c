@@ -50,7 +50,7 @@ log_set(const char *filename) {
 
 	mutex_lock(l_mutex);
 
-	f = fopen(filename, "w+");
+	f = fopen(filename, "a");
 	if (f) {
 		l_log_filename = filename;
 		l_log_output = f;
