@@ -2216,6 +2216,23 @@ conn_sendfile(conn_t *conn, const char *file) {
 		return (false);
 	}
 
+#ifdef _DARWIN
+	/*
+	 * OSX 10.6 does not have a functioning O_CLOEXEC
+	 * Thus work around it by doing this on all platforms
+	 * even though 10.7+ handle it properly
+	 *
+	 * For 10.6 there remain a slight chance of a race
+	 * here if another thread does an exec between the
+	 * above open and the end of this call.
+	 */
+	if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1) {
+		logline(log_ERR_,
+			"Could not set FD_CLOEXEC for %s",
+			file);
+	}
+#endif /* _DARWIN */
+
 	/* Get the file statistics */
 	if (fstat(fd, &st) == -1) {
 		logline(log_ERR_,
