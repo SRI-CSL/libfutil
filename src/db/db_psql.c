@@ -93,7 +93,7 @@ db_tryconnect(dbconn_t *db) {
 	assert(!db->conn);
 
 	if (!db->conninfo) {
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			"No connection information available, "
 			"thus can't connect");
 		db->conn = NULL;
@@ -107,7 +107,7 @@ db_tryconnect(dbconn_t *db) {
 
 	/* Check to see that the backend connection was successfully made */
 	if (PQstatus(db->conn) != CONNECTION_OK) {
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			"Connection to database (%s) failed: %s",
 			db->conninfo,
 			PQerrorMessage(db->conn));
@@ -248,8 +248,8 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 	 */
 	if (result->res != NULL)
 	{
-		logline(log_CRIT_, "Query still open: %s\n", db->q);
-		logline(log_CRIT_, "New Query: %s\n", txt);
+		logline(log_ERR_, "Query still open: %s\n", db->q);
+		logline(log_ERR_, "New Query: %s\n", txt);
 		abort();
 		return (DB_R_ERR);
 	}
@@ -270,7 +270,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		/* Just in case our random amount is not good enough */
 		if (v >= lengthof(vals)) {
-			logline(log_CRIT, caller,
+			logline(log_ERR, caller,
 				"Too many variable arguments in SQL query: %s",
 				txt);
 			break;
@@ -280,7 +280,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 		case '\0':
 			/* Need to break */
 			rep = DB_R_ERR;
-			logline(log_CRIT, caller,
+			logline(log_ERR, caller,
 				"Variable at the end of the line");
 			break;
 
@@ -297,7 +297,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"IP Address Variable did not "
 					"fit anymore");
 				break;
@@ -317,7 +317,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"IP Address Variable did not "
 					"fit anymore");
 				break;
@@ -339,7 +339,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"32bit Variable did not "
 					"fit anymore");
 				break;
@@ -361,7 +361,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"64bit Variable did not "
 					"fit anymore");
 				break;
@@ -380,7 +380,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"String Variable did not "
 					"fit anymore");
 				break;
@@ -395,7 +395,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "%s", t);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"Direct String did not "
 					"fit anymore");
 				break;
@@ -413,7 +413,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "'%s'", t);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_CRIT, caller,
+				logline(log_ERR, caller,
 					"Type did not fit anymore");
 				break;
 			}
@@ -423,7 +423,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		default:
 			rep = DB_R_ERR;
-			logline(log_CRIT, caller,
+			logline(log_ERR, caller,
 				"Unknown Variable Type %%%c",
 				txt[i]);
 			break;
@@ -437,7 +437,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 	/* Failed already? */
 	if (rep != DB_R_OK) {
-		logline(log_CRIT, caller, "String setup failed");
+		logline(log_ERR, caller, "String setup failed");
 		mutex_unlock(db->mutex);
 		return (DB_R_ERR);
 	}
@@ -460,7 +460,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		/* If we got results, all is fine */
 		if (result->res == NULL) {
-			logline(log_CRIT_, "Query(%s) - no result", db->q);
+			logline(log_ERR_, "Query(%s) - no result", db->q);
 
 			/* Something funky, disconnect it */
 			PQfinish(db->conn);
@@ -688,14 +688,14 @@ db_result_field_bool(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_bool(result, row, column, b)) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field is not boolean",
 			field);
 		return (false);
@@ -710,14 +710,14 @@ db_result_field_string(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_string(result, row, column, string)) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field is not string",
 			field);
 		return (false);
@@ -732,14 +732,14 @@ db_result_field_uint32(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_uint32(result, row, column, t32)) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field is not number",
 			field);
 		return (false);
@@ -754,14 +754,14 @@ db_result_field_uint64(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_uint64(result, row, column, t64)) {
-		logline(log_CRIT, caller,
+		logline(log_ERR, caller,
 			"%s field is not number",
 			field);
 		return (false);
@@ -789,7 +789,7 @@ db_create(dbconn_t *db,
 			       tables[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"Failure in dropping table '%s'",
 				tables[i]);
 			return (false);
@@ -803,7 +803,7 @@ db_create(dbconn_t *db,
 			       types[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"Failure in dropping type '%s'",
 				types[i]);
 			return (false);
@@ -815,7 +815,7 @@ db_create(dbconn_t *db,
 		rep = db_query(db, &res, __func__, typeQs[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"Could not create type '%s'",
 				types[i]);
 			return (false);
@@ -827,7 +827,7 @@ db_create(dbconn_t *db,
 		rep = db_query(db, &res, __func__, tableQs[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"Could not create table '%s'",
 				tables[i]);
 			return (false);

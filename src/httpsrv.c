@@ -1025,13 +1025,13 @@ httpsrv_newcl(httpsrv_t *hs) {
 
 	/* Initialize the conn to defaults */
 	if (!conn_init(&hcl->conn, NULL)) {
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			HCL_ID " Could not init connection",
 			hcl->id);
 
 		r = httpsrv_client_close(hcl, true);
 		if (!r) {
-			logline(log_CRIT_, "Could not close new HCL (conn)");
+			logline(log_ERR_, "Could not close new HCL (conn)");
 		}
 
 		return (NULL);
@@ -1039,13 +1039,13 @@ httpsrv_newcl(httpsrv_t *hs) {
 
 	/* Init the buffers */
 	if (!buf_init(&hcl->the_headers)) {
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			HCL_ID " Could not init buf",
 			hcl->id);
 
 		r = httpsrv_client_close(hcl, true);
 		if (!r) {
-			logline(log_CRIT_, "Could not close new HCL (buf)");
+			logline(log_ERR_, "Could not close new HCL (buf)");
 		}
 
 		return (NULL);
@@ -1563,20 +1563,20 @@ httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned i
 	/* Listen on the HTTP port (forwarded to from mod_hs) */
 	if (!conn_create_listen(&hs->connset,
 				hostname, IPPROTO_TCP, port)) {
-		logline(log_CRIT_, "conn_create_listen()");
+		logline(log_ERR_, "conn_create_listen()");
 		return (false);
 	}
 
 	/* Launch a few HTTP worker threads */
 	for (i = 0; i < numworkers; i++) {
 		if (!thread_add("HTTPWorker", &httpsrv_worker_thread, hs)) {
-			logline(log_CRIT_, "could not create thread");
+			logline(log_ERR_, "could not create thread");
 			return (false);
 		}
 	}
 
 	if (!thread_add("HTTPPoller", &httpsrv_poller_thread, hs)) {
-		logline(log_CRIT_, "could not create thread");
+		logline(log_ERR_, "could not create thread");
 		return (false);
 	}
 

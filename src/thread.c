@@ -686,7 +686,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 	/* Chdir to root so we don't keep any dir busy */
 	ret = chdir("/");
 	if (ret != 0) {
-		logline(log_CRIT_, "Could not change dir to /");
+		logline(log_ERR_, "Could not change dir to /");
 		return (-1);
 	}
 
@@ -701,7 +701,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 		f = fopen(pidfile, "w");
 		if (!f)
 		{
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				 "Could not store PID in file %s",
 				pidfile);
 			return (-1);
@@ -727,14 +727,14 @@ thread_daemonize(const char *pidfile, const char *username) {
 #if defined(_LINUX) || defined(_FREEBSD)
 		/* This makes sure there is no way back */
 		if (setresgid(gid, gid, gid) < 0) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"setresgid(group of %s) failed",
 				username);
 			return (-1);
 		}
 
 		if (setresuid(uid, uid, uid) < 0) {
-			logline(log_CRIT_,
+			logline(log_ERR_,
 				"setresuid(%s) failed",
 				username);
 			return (-1);

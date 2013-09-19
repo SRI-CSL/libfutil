@@ -2814,7 +2814,7 @@ conn_create_listen(connset_t *connset,
 					}
 
 					if (!conn_init(conn, NULL)) {
-						logline(log_CRIT_,
+						logline(log_ERR_,
 							"Conn init failed");
 						break;
 					}

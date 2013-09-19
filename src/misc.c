@@ -612,7 +612,7 @@ getpriolevel(const char *name) {
 	}
 
 	/* Not found */
-	logline(log_CRIT_,
+	logline(log_ERR_,
 		"Priority level '%s' does not exist",
 		name);
 
@@ -630,13 +630,13 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	/* Open it */
 	f = fopen(dev, "r");
 	if (!f) {
-		logline(log_CRIT_, "Could not open %s", dev);
+		logline(log_ERR_, "Could not open %s", dev);
 		return;
 	}
 
 	n = fread(rnd, 1, size, f);
 	if (n != size) {
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			"Random read failed, got %" PRIu64 " of %" PRIu64,
 			(uint64_t)n, size);
 	}
@@ -655,7 +655,7 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	}
 
 	if (!CryptGenRandom(hProvider, size, rnd)) {
-		logline(log_CRIT_, "CryptGenRandom() failed");
+		logline(log_ERR_, "CryptGenRandom() failed");
 	}
 
 	CryptReleaseContext(hProvider, 0);

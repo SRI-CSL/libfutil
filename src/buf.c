@@ -189,11 +189,10 @@ buf_vprintf(buf_t *buf, const char *fmt, va_list ap) {
 			continue;
 		}
 
-		logline(log_CRIT_,
+		logline(log_ERR_,
 			"Could not add more, buffer too full "
 			"(%u > %" PRIu64 " + %" PRIu64 ")",
 			len, left, buf->offset);
-		fassert(false);
 
 		ret = false;
 		break;
