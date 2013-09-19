@@ -134,13 +134,24 @@ typedef HANDLE			cond_t;
 #endif
 
 #ifdef _DARWIN
+
 #include <netinet/in_systm.h>
 #include <sys/uio.h>
-#define O_LARGEFILE 0
+
+
 #ifndef ENODATA
 #define ENODATA EFTYPE
 #endif
+
+/* OSX is fully 64bit */
+#define O_LARGEFILE 0
+
+/* < 10.6 does not have this */
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
 #endif
+
+#endif /* _DARWIN */
 
 #define snprintfok(ret, bufsize) (((ret) >= 0) && \
 				  (((unsigned int)(ret)) < bufsize))
