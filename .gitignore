@@ -1,19 +1,10 @@
 # Temporary files
-src/*.o
-src/*.d
-src/*.lo
-src/*.la
-src/*.slo
-src/*.swp
+*.o
+*.d
+*.lo
+*.la
+*.slo
+*.swp
+
 src/.libs
-
-src/db/*.o
-src/db/*.d
-
-src/rfc6234/*.o
-src/rfc6234/*.d
-
 tests/test
-tests/*.o
-tests/*.d
-
