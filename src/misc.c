@@ -190,9 +190,11 @@ logitVA(unsigned int level, const char UNUSED *file,
  * The first returns a buffer (and might not use our buffer) the latter
  * always uses our buffer. Hence, this trick to solve the difference.
  */
-#if ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE)
+#if (!defined(_LINUX) || ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE))
+			/* XSI version */
 			e = buf;
 #else
+			/* GNU version */
 			e =
 #endif
 			strerror_r(errnum, buf, sizeof buf);
