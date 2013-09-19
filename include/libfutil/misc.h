@@ -1,17 +1,13 @@
 #ifndef MISC_H
 #define MISC_H 1
 
-#ifdef _LINUX
-#include <features.h>
-#endif
-
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <strings.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -21,7 +17,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include <sys/time.h>
-#include <sys/fcntl.h>
+#include <string.h>
 
 #ifndef _WIN32
 /* Not Windows */
