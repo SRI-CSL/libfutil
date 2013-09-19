@@ -156,15 +156,32 @@ void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
 void httpsrv_set_posthandle(httpsrv_client_t *hcl, httpsrv_sf f);
 
 bool httpsrv_parse_request(httpsrv_client_t *hcl);
+
 void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
+
+void httpsrv_sendfile(httpsrv_client_t *hin, const char *file);
 
 int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
 void httpsrv_readbody_free(httpsrv_client_t *hcl);
 
 void httpsrv_sessions(httpsrv_client_t *hcl);
 
-/* None, 10 minutes, 24 hours */
-#define HTTPSRV_EXPIRE_NONE	(0)
+#define HTTPSRV_HTTP_OK		200, "OK"
+#define HTTPSRV_HTTP_FORBIDDEN	403, "Forbidden"
+#define HTTPSRV_HTTP_NOTFOUND	404, "Not Found"
+
+#define HTTPSRV_CTYPE_HTML	"text/html;charset=UTF-8"
+#define HTTPSRV_CTYPE_CSS	"text/css;charset=UTF-8"
+#define HTTPSRV_CTYPE_JSON	"application/json"
+#define HTTPSRV_CTYPE_JPEG	"image/jpeg"
+#define HTTPSRV_CTYPE_PNG	"image/png"
+#define HTTPSRV_CTYPE_BINARY	"application/binary"
+
+void httpsrv_answer(httpsrv_client_t *hcl, unsigned int code, const char *msg, const char *ctype);
+void httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg);
+
+/* Force, 10 minutes, 24 hours */
+#define HTTPSRV_EXPIRE_FORCE	(0)
 #define HTTPSRV_EXPIRE_SHORT	(60*10)
 #define HTTPSRV_EXPIRE_LONG	(60*60*24)
 void httpsrv_expire(httpsrv_client_t *hcl, unsigned int maxage);

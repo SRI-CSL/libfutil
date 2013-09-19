@@ -151,7 +151,8 @@ httpsrv_expire(httpsrv_client_t *hcl, unsigned int maxage) {
 		/* Always modified */
 		httpsrv_http_headertime(hcl, "Last-Modified", t);
 
-		/* Date in the far past
+		/*
+		 * Date in the far past
 		 * (over 9M hits on google for this string :)
 		 */
 		conn_addheader(&hcl->conn,
@@ -179,10 +180,8 @@ httpsrv_expire(httpsrv_client_t *hcl, unsigned int maxage) {
 	}
 }
 
-static void
-httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg);
-static void
-httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
+void
+httpsrv_answer(httpsrv_client_t *hcl, unsigned int code, const char *msg, const char *ctype) {
 	conn_addheaderf(&hcl->conn, "HTTP/1.1 %u %s", code, msg);
 
 	if (code != 200) {
@@ -190,6 +189,15 @@ httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
 			HCL_ID " " CONN_ID " HTTP Error %u %s",
 			hcl->id, conn_id(&hcl->conn), code, msg);
 	}
+
+	if (ctype != NULL) {
+		conn_addheaderf(&hcl->conn, "Content-Type: %s", ctype);
+	}
+}
+
+void
+httpsrv_error(httpsrv_client_t *hcl, unsigned int code, const char *msg) {
+	httpsrv_answer(hcl, code, msg, HTTPSRV_CTYPE_HTML);
 
 	if (hcl->hs->top)
 		hcl->hs->top(hcl, hcl->user);
@@ -1154,6 +1162,64 @@ httpsrv_poller_thread(void *context) {
 
 	logline(log_DEBUG_, "[hs%" PRIu64 "] exiting", hs->id);
 	return (NULL);
+}
+
+/* Very crude, but calling 'file --mime-type' is a bit much */
+static const char *
+httpsrv_mimetype(const char *file);
+static const char *
+httpsrv_mimetype(const char *file) {
+	const char	*mime = HTTPSRV_CTYPE_BINARY;
+	const char	*ext;
+	unsigned int	i, l;
+
+	/* Find the last dot (.) */
+	l = strlen(file);
+	for (i = l; i > 0 && file[i] != '.'; i--);
+
+	/* No extension? */
+	if (l == i) {
+		logline(log_DEBUG_, "%s has no extension?", file);
+		return (mime);
+	}
+
+	ext = &file[i+1];
+
+	logline(log_DEBUG_, "%s has extension: %s", file, ext);
+
+	/* Compare the extension */
+	if (strcmp(ext, "css") == 0)
+		mime = HTTPSRV_CTYPE_CSS;
+	else if (strcmp(ext, "html") == 0)
+		mime = HTTPSRV_CTYPE_HTML;
+	else if (strcmp(ext, "json") == 0)
+		mime = HTTPSRV_CTYPE_JSON;
+	else if (strcmp(ext, "jpg") == 0)
+		mime = HTTPSRV_CTYPE_JPEG;
+	else if (strcmp(ext, "jpeg") == 0)
+		mime = HTTPSRV_CTYPE_JPEG;
+	else if (strcmp(ext, "png") == 0)
+		mime = HTTPSRV_CTYPE_PNG;
+
+	logline(log_DEBUG_, "%s has mime-type: %s", file, mime);
+
+	return (mime);
+}
+
+void
+httpsrv_sendfile(httpsrv_client_t *hcl, const char *file) {
+	const char *mime;
+
+	if (!conn_sendfile(&hcl->conn, file)) {
+		httpsrv_error(hcl, 404, "Not Found");
+		return;
+	}
+
+	/* Get the mime type */
+	mime = httpsrv_mimetype(file);
+
+	/* Answer it */
+	httpsrv_answer(hcl, HTTPSRV_HTTP_OK, mime);
 }
 
 void

@@ -76,6 +76,10 @@ struct conn {
 	conn_posthandle_f	posthandle_f;	/* Post Handling function */
 	void			*posthandle_u;	/* User data */
 
+	int			sendfile_fd;	/* FD to send */
+	uint64_t		sendfile_off;	/* Current offset */
+	uint64_t		sendfile_len;	/* How much is the total? */
+
 	/* OpenSSL */
 #ifdef CONN_SSL
 	BIO			*ssl_bio_in;	/* Binary In */
@@ -145,6 +149,8 @@ bool conn_vprintf(conn_t *conn, const char *fmt, va_list ap)
 	ATTR_FORMAT(printf, 2, 0);
 bool conn_printf(conn_t *conn, const char *fmt, ...)
 	ATTR_FORMAT(printf, 2, 3);
+
+bool conn_sendfile(conn_t *conn, const char *file);
 
 #define CONN_IDn "c%" PRIu64 ""
 #define CONN_ID "[" CONN_IDn "]"

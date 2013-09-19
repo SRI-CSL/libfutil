@@ -814,6 +814,10 @@ conn_init(conn_t *conn, void *clientdata)
 	conn_set_state(conn, CONN_UNUSED);
 	conn->add_contentlen = true;
 
+	conn->sendfile_fd = -1;
+	conn->sendfile_off = 0;
+	conn->sendfile_len = 0;
+
 	return (true);
 }
 
@@ -2173,6 +2177,126 @@ conn_flushleft(conn_t *conn) {
 	return (l);
 }
 
+static void
+conn_sendfile_done(conn_t *conn);
+static void
+conn_sendfile_done(conn_t *conn) {
+	conn->sendfile_len = 0;
+	conn->sendfile_off = 0;
+
+	assert(conn->sendfile_fd != -1);
+
+	if (conn->sendfile_fd != -1) {
+		close(conn->sendfile_fd);
+		conn->sendfile_fd = -1;
+	}
+}
+
+/*
+ * Caller has to call conn_flush() separately
+ * This so that headers can be added
+ */
+bool
+conn_sendfile(conn_t *conn, const char *file) {
+	int		fd;
+	struct stat	st;
+
+	/* Make sure there was nothing yet */
+	assert(conn->sendfile_fd == -1);
+	assert(conn->sendfile_off == 0);
+	assert(conn->sendfile_len == 0);
+
+	/* Check the path for strange ../ kind of constructs */
+	if (strstr(file, "../") != NULL) {
+		logline(log_ERR_,
+			"Refusing '%s' which contains a relative path",
+			file);
+		return (false);
+	}
+
+	fd = open(file, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_LARGEFILE);
+	if (fd == -1) {
+		logline(log_ERR_,
+			"Could not open %s for sendfile()",
+			file);
+		return (false);
+	}
+
+	/* Get the file statistics */
+	if (fstat(fd, &st) == -1) {
+		logline(log_ERR_,
+			"Could not fstat %s for sendfile()",
+			file);
+		close(fd);
+		return (false);
+	}
+
+	/* Fill in our sendfile details */
+	conn->sendfile_fd = fd;
+	conn->sendfile_off = 0;
+	conn->sendfile_len = st.st_size;
+
+	/* For HTTP requests */
+	conn_set_real_contentlen(conn, conn->sendfile_len);
+
+	return (true);
+}
+
+static void
+conn_flush_sendfile(conn_t *conn);
+static void
+conn_flush_sendfile(conn_t *conn) {
+	off_t	off = conn->sendfile_off;
+	size_t	cnt = conn->sendfile_len;
+	int	r;
+
+	logline(log_DEBUG_,
+		CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ")",
+		conn_id(conn), conn->sendfile_off, conn->sendfile_len);
+
+	/*
+	 * Note that this blocks on input,
+	 * but we assume disk IO to be faster than network IO
+	 * Also, we have multiple worker threads thus it ain't that bad
+	 */
+	r = sendfile(conn->sock, conn->sendfile_fd, &off, cnt);
+	if (r == -1) {
+		switch (errno) {
+		case EAGAIN:
+			/* We are non-blocking, thus expected */
+			break;
+		case EINTR:
+			/* Interrupts will be handled elsewhere */
+			break;
+		default:
+			/* Something broken */
+			logline(log_ERR_,
+				CONN_ID " sendfile() failed",
+				conn->id);
+			return;
+		}
+
+		/* Should always go forward */
+		assert((uint64_t)off >= conn->sendfile_off);
+
+		logline(log_DEBUG_,
+			CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ") = %" PRIu64,
+			conn_id(conn), conn->sendfile_off, conn->sendfile_len,
+			off - conn->sendfile_off);
+
+		/* Store our new offset */
+		conn->sendfile_off = off;
+	} else {
+		assert(r > 0);
+		conn_sendfile_done(conn);
+
+		logline(log_DEBUG_, CONN_ID " flush complete", conn_id(conn));
+
+		/* Nothing to flush thus continue polling for incoming */
+		conn_eventsA(conn, CONN_POLLIN);
+	}
+}
+
 /*
  * Flush a bit more of the buffer towards the client
  * Might be async and not flush everything
@@ -2203,10 +2327,6 @@ conn_flush(conn_t *conn) {
 	}
 #endif /* CONN_SSL */
 
-	len_b = buf_cur(&conn->send);
-	len_h = buf_cur(&conn->send_headers);
-	len = len_b + len_h;
-
 	if (!conn_is_connected(conn) || conn_is_eofA(conn)) {
 		logline(log_DEBUG_, CONN_ID " not connected", conn_id(conn));
 		buf_unlock(&conn->send_headers);
@@ -2215,11 +2335,22 @@ conn_flush(conn_t *conn) {
 		return (false);
 	}
 
+	len_b = buf_cur(&conn->send);
+	len_h = buf_cur(&conn->send_headers);
+	len = len_b + len_h;
+
 	/* Nothing to flush */
 	if (len == 0) {
-		logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
-		/* Nothing to flush thus continue polling for incoming */
-		conn_eventsA(conn, CONN_POLLIN);
+		/* Need to send more of a file? */
+		if (conn->sendfile_len != 0) {
+			conn_flush_sendfile(conn);
+		} else {
+			logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
+
+			/* Nothing to flush thus continue polling for incoming */
+			conn_eventsA(conn, CONN_POLLIN);
+		}
+
 		buf_unlock(&conn->send_headers);
 		buf_unlock(&conn->send);
 		conn_unlock(conn);
@@ -2357,8 +2488,15 @@ conn_flush(conn_t *conn) {
 		buf_empty(&conn->send);
 		buf_empty(&conn->send_headers);
 
-		/* We always want to know about this */
-		conn_eventsA(conn, CONN_POLLIN);
+		/* Need to send more of a file? */
+		if (conn->sendfile_len != 0) {
+			conn_flush_sendfile(conn);
+		} else {
+			logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
+
+			/* Nothing to flush thus continue polling for incoming */
+			conn_eventsA(conn, CONN_POLLIN);
+		}
 	} else {
 		logline(log_NOTICE_,
 			CONN_ID " Written %" PRIu64 " of %" PRIu64,

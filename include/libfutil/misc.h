@@ -35,6 +35,7 @@
 #include <netdb.h>
 #include <sys/syscall.h>
 #include <pwd.h>
+#include <sys/sendfile.h>
 
 #define INVALID_SOCKET		-1
 typedef int64_t			socket_t;
