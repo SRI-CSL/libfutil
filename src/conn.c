@@ -2240,20 +2240,34 @@ static void
 conn_flush_sendfile(conn_t *conn);
 static void
 conn_flush_sendfile(conn_t *conn) {
-	off_t	off = conn->sendfile_off;
-	size_t	cnt = conn->sendfile_len;
+	off_t	off;
+#ifdef _LINUX
+	size_t	cnt;
+#else
+	off_t	cnt;
+#endif
 	int	r;
 
 	logline(log_DEBUG_,
 		CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ")",
 		conn_id(conn), conn->sendfile_off, conn->sendfile_len);
 
+	off = conn->sendfile_off;
+	cnt = conn->sendfile_len;
+
 	/*
 	 * Note that this blocks on input,
 	 * but we assume disk IO to be faster than network IO
 	 * Also, we have multiple worker threads thus it ain't that bad
 	 */
+#ifdef _LINUX
+	/* Linux */
 	r = sendfile(conn->sock, conn->sendfile_fd, &off, cnt);
+#else
+	/* Darwin/BSD variants */
+	cnt -= off;
+	r = sendfile(conn->sock, conn->sendfile_fd, off, &cnt, NULL, 0);
+#endif
 	if (r == -1) {
 		switch (errno) {
 		case EAGAIN:
