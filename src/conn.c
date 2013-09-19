@@ -2236,9 +2236,9 @@ conn_sendfile(conn_t *conn, const char *file) {
 	return (true);
 }
 
-static void
+static bool
 conn_flush_sendfile(conn_t *conn);
-static void
+static bool
 conn_flush_sendfile(conn_t *conn) {
 	off_t	off;
 #ifdef _LINUX
@@ -2266,7 +2266,7 @@ conn_flush_sendfile(conn_t *conn) {
 #else
 	/* Darwin/BSD variants */
 	cnt -= off;
-	r = sendfile(conn->sock, conn->sendfile_fd, off, &cnt, NULL, 0);
+	r = sendfile(conn->sendfile_fd, conn->sock, off, &cnt, NULL, 0);
 #endif
 	if (r == -1) {
 		switch (errno) {
@@ -2281,7 +2281,8 @@ conn_flush_sendfile(conn_t *conn) {
 			logline(log_ERR_,
 				CONN_ID " sendfile() failed",
 				conn->id);
-			return;
+			conn_sendfile_done(conn);
+			return (false);
 		}
 
 		/* Should always go forward */
@@ -2293,9 +2294,13 @@ conn_flush_sendfile(conn_t *conn) {
 			off - conn->sendfile_off);
 
 		/* Store our new offset */
+#ifdef _LINUX
 		conn->sendfile_off = off;
+#else
+		conn->sendfile_off += cnt;
+#endif
 	} else {
-		assert(r > 0);
+		assert(r >= 0);
 		conn_sendfile_done(conn);
 
 		logline(log_DEBUG_, CONN_ID " flush complete", conn_id(conn));
@@ -2303,6 +2308,8 @@ conn_flush_sendfile(conn_t *conn) {
 		/* Nothing to flush thus continue polling for incoming */
 		conn_eventsA(conn, CONN_POLLIN);
 	}
+
+	return (true);
 }
 
 /*
@@ -2313,6 +2320,7 @@ bool
 conn_flush(conn_t *conn) {
 	ssize_t		r;
 	uint64_t	len, len_b, len_h, wlen;
+	bool		ret = true;
 
 	logline(log_DEBUG_,
 		CONN_ID " list: %s",
@@ -2351,7 +2359,7 @@ conn_flush(conn_t *conn) {
 	if (len == 0) {
 		/* Need to send more of a file? */
 		if (conn->sendfile_len != 0) {
-			conn_flush_sendfile(conn);
+			ret = conn_flush_sendfile(conn);
 		} else {
 			logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
 
@@ -2362,7 +2370,7 @@ conn_flush(conn_t *conn) {
 		buf_unlock(&conn->send_headers);
 		buf_unlock(&conn->send);
 		conn_unlock(conn);
-		return (true);
+		return (ret);
 	}
 
 	conn->last_sent = gettime();
@@ -2498,7 +2506,7 @@ conn_flush(conn_t *conn) {
 
 		/* Need to send more of a file? */
 		if (conn->sendfile_len != 0) {
-			conn_flush_sendfile(conn);
+			ret = conn_flush_sendfile(conn);
 		} else {
 			logline(log_DEBUG_, CONN_ID " nothing to flush", conn_id(conn));
 
@@ -2534,13 +2542,16 @@ conn_flush(conn_t *conn) {
 		conn_eventsA(conn, CONN_POLLIN | CONN_POLLOUT);
 	}
 
-	logline(log_DEBUG_, CONN_ID " left %" PRIu64,
-		conn_id(conn), buf_cur(&conn->send));
+	logline(log_DEBUG_,
+		CONN_ID " left %" PRIu64 " sf: %" PRIu64,
+		conn_id(conn),
+		buf_cur(&conn->send),
+		conn->sendfile_len);
 
 	buf_unlock(&conn->send_headers);
 	buf_unlock(&conn->send);
 	conn_unlock(conn);
-	return (true);
+	return (ret);
 }
 
 /* Callers might have locked the conn mutex */
