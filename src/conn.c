@@ -1189,13 +1189,7 @@ connset_poll(connset_t *cs) {
 				logline(log_NOTICE_, "Bad Filedescriptor");
 				continue;
 			} else {
-				char buf[128];
-
-				memzero(buf, sizeof buf);
-				strerror_r(errsv, buf, sizeof buf);
-				logline(log_ERR_, "Select Failed: %d : %s",
-					errsv, buf);
-				fassert(false);
+				logline(log_ERR_, "Select Failed");
 			}
 
 			return (-1);
