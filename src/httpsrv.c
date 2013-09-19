@@ -727,8 +727,9 @@ httpsrv_done(httpsrv_client_t *hcl) {
 
 bool
 httpsrv_parse_request(httpsrv_client_t *hcl) {
-	unsigned int	j, ao = 0, uo = 0;
-	char		c, *line = hcl->the_request, *s, *h;
+	unsigned int	j, ro = 0, ao = 0, uo = 0;
+	char		c, *s, *h;
+	const char	*line;
 	bool		isarg = false;
 	uint32_t	proto;
 
@@ -739,6 +740,8 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 			hcl->id, conn_id(&hcl->conn));
 		return (true);
 	}
+
+	line = hcl->the_request;
 
 	logline(log_DEBUG_,
 		HCL_ID " " CONN_ID " scanning: %s",
@@ -758,6 +761,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 	j++;
 
 	for (	;
+		ro < (sizeof hcl->headers.rawuri - 1) &&
 		uo < (sizeof hcl->headers.uri - 1) &&
 		ao < (sizeof hcl->headers.args - 1);
 		j++) {
@@ -765,6 +769,9 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		fassert(hcl->headers.argc < lengthof(hcl->headers.argi));
 
 		c = line[j];
+
+		/* Keep a Raw URI */
+		hcl->headers.rawuri[ro++] = c;
 
 		if (c == ' ' || c == '\0') {
 			/* Was the last argument used at least a bit? */
