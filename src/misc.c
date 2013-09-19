@@ -47,20 +47,18 @@ bool
 log_set(const char *filename) {
 	FILE	*f;
 	bool	ret;
-	int	e;
 
 	mutex_lock(l_mutex);
 
 	f = fopen(filename, "w+");
-	e = errno;
 	if (f) {
 		l_log_filename = filename;
 		l_log_output = f;
 		ret = true;
 	} else {
 		logline(log_ERR_,
-			"Could not open logfile %s: %s (%u)",
-			filename, strerror(e), e);
+			"Could not open logfile %s",
+			filename);
 		ret = false;
 	}
 
@@ -91,13 +89,20 @@ logitVA(unsigned int level, const char UNUSED *file,
 	unsigned int UNUSED line, const char *caller,
 	const char *format, va_list ap)
 {
-	static uint64_t	id_p = 0;
-	static unsigned int level_p = -1;
-	uint64_t	id = getthisthreadid(), msec;
-	int64_t		maxlogsize = (100 * 1024 * 1024);
-	struct stat	st;
-	time_t		tm;
-	struct tm	teem;
+	static uint64_t		id_p = 0;
+	static unsigned int	level_p = -1;
+	static int64_t		maxlogsize = (100 * 1024 * 1024);
+	uint64_t		id, msec;
+	struct stat		st;
+	time_t			tm;
+	struct tm		teem;
+	int			errnum;
+
+	/* Retain the errno (before we change it here) */
+	errnum = errno;
+
+	/* The current Thread ID */
+	id = getthisthreadid();
 
 	/* Lock her up */
 	mutex_lock(l_mutex);
@@ -124,6 +129,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 #ifndef _WIN32
 		/* Use syslog as we have nothing better */
 		vsyslog(level, format, ap);
+		/* Note: does not log errno */
 #else
 		vfprintf(stderr, format, ap);
 #endif
@@ -172,6 +178,32 @@ logitVA(unsigned int level, const char UNUSED *file,
 #endif
 			ln, t, caller);
 		vfprintf(l_log_output, format, ap);
+
+		/* Add the errno + textual version */
+		if (level <= LOG_ERR) {
+			char buf[256];
+			const char *e;
+
+			memzero(buf, sizeof buf);
+/*
+ * There are two variants of strerror_r(), the silly GNU one and the XSI one 
+ * The first returns a buffer (and might not use our buffer) the latter
+ * always uses our buffer. Hence, this trick to solve the difference.
+ */
+#if ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE)
+			e = buf;
+#else
+			e =
+#endif
+			strerror_r(errnum, buf, sizeof buf);
+
+			fprintf(l_log_output,
+				", errno: %s (%d)",
+				e,
+				errnum
+				);
+		}
+
 		fprintf(l_log_output, "\n");
 		fflush(l_log_output);
 	}
