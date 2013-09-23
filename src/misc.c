@@ -121,7 +121,7 @@ logitVA(unsigned int level, const char UNUSED *file,
 
 	/* Not open yet? */
 	if (!l_log_output && l_log_filename) {
-		l_log_output = fopen(l_log_filename, "w+");
+		l_log_output = fopen(l_log_filename, "a");
 	}
 
 	/* No log output */
