@@ -499,6 +499,8 @@ thread_exit(void) {
 
 	fassert(list_isempty(l_threads));
 
+	logline(log_INFO_, "Shutting down");
+
 	list_destroy(l_threads);
 	mfree(l_threads, sizeof *l_threads, "l_threads");
 	l_threads = NULL;
