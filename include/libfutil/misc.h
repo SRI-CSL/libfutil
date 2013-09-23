@@ -356,6 +356,9 @@ struct tm *localtime_r(const time_t *timep, struct tm *result);
 int strerror_r(int errnum, char *strerrbuf, size_t buflen);
 #endif
 
+const char *aprintf(const char *format, ...) ATTR_FORMAT(printf, 1, 2);
+void aprintf_free(const char *buf);
+
 void dumppacket(int level, const uint8_t *packet, uint64_t len);
 
 int parse_iso8601_time(const char *t, uint64_t *when);

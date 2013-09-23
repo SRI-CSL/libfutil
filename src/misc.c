@@ -1047,6 +1047,66 @@ strerror_r(int errnum, char *strerrbuf, size_t buflen) {
 
 #endif /* _WIN32 */
 
+/*
+ * Format a string while allocating it too at the right length
+ *
+ * We store the length of the string in the first 8 bytes (64bits
+ */
+const char *
+aprintf(const char *format, ...) {
+	char		*buf = NULL;
+	uint64_t	size = 0;
+	va_list		ap;
+	int		r;
+
+	/* Try without, gives us the length */
+	va_start(ap, format);
+	r = vsnprintf(NULL, 0, format, ap);
+	va_end(ap);
+	if (r <= 0) {
+		logline(log_ERR_, "First attempt failed");
+		return (NULL);
+	}
+
+	/* Add an extra byte for the terminating \0 */
+	size = r + 1;
+	
+	buf = mcalloc(size + sizeof size, "aprintf");
+	if (buf == NULL) {
+		logline(log_CRIT_, "Out of memory");
+		return (NULL);
+	}
+
+	va_start(ap, format);
+	r = vsnprintf(&buf[sizeof size], size, format, ap);
+	va_end(ap);
+
+	/* Second attempt failed or made it even bigger? */
+	if (r <= 0 || (unsigned int)r > size) {
+		logline(log_ERR_, "Second attempt failed");
+		mfree(buf, size, "aprintf");
+		return (NULL);
+	}
+
+	/* Fill in the size */
+	memcpy(buf, &size, sizeof size);
+
+	/* Return the string portion */
+	return (&buf[sizeof size]);
+}
+
+void
+aprintf_free(const char *buf) {
+	const char	*b;
+	uint64_t	size;
+
+	assert(buf);
+
+	b = &buf[-sizeof size];
+	memcpy(&size, buf, sizeof size);
+	mfree(b, size, "aprintf");
+}
+
 #define DUMPPACKET_PERLINE	16
 #define DUMPPACKET_LINES	32
 #define DUMPPACKET_MAX		(DUMPPACKET_PERLINE * DUMPPACKET_LINES)
