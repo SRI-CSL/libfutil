@@ -770,8 +770,8 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 
 	for (	;
 		ro < (sizeof hcl->headers.rawuri - 1) &&
-		uo < (sizeof hcl->headers.uri - 1) &&
-		ao < (sizeof hcl->headers.args - 1);
+		uo < (sizeof hcl->headers.uri    - 1) &&
+		ao < (sizeof hcl->headers.args   - 1);
 		j++) {
 
 		fassert(hcl->headers.argc < lengthof(hcl->headers.argi));
@@ -866,6 +866,11 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 			hcl->headers.args[ao++] = c;
 		}
 	}
+
+	/* Just in case */
+	assert(ro < (sizeof hcl->headers.rawuri - 1));
+	assert(uo < (sizeof hcl->headers.uri    - 1));
+	assert(ao < (sizeof hcl->headers.args   - 1));
 
 	/* Get the local + remote IP/port */
 	conn_getinfo(
