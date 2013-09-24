@@ -29,18 +29,24 @@ log_setup(const char *name, FILE *f) {
 
 void
 log_chown(uid_t uid, gid_t gid) {
-	mutex_lock(l_mutex);
-
 #ifndef _WIN32
+	mutex_lock(l_mutex);
 	if (l_log_output != NULL) {
-		fchown(fileno(l_log_output), uid, gid);
+		int r;
+		r = fchown(fileno(l_log_output), uid, gid);
+
+		if (r != 0) {
+			logline(log_ERR_, "fchown() failed");
+		}
 	}
+	mutex_unlock(l_mutex);
 #else
+	mutex_lock(l_mutex);
 	uid = uid;
 	gid = gid;
+	mutex_unlock(l_mutex);
 #endif
 
-	mutex_unlock(l_mutex);
 }
 
 bool

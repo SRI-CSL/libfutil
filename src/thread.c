@@ -607,8 +607,8 @@ thread_daemonize(const char *pidfile, const char *username) {
 	int		ret, pid;
 	unsigned int	cnt = 0;
 	struct passwd	*pw;
-	uid_t		uid;
-	gid_t		gid;
+	uid_t		uid = 0;
+	gid_t		gid = 0;
 
 	/* We should be initialized */
 	assert(l_threads != NULL);
@@ -620,8 +620,8 @@ thread_daemonize(const char *pidfile, const char *username) {
 			gid = pw->pw_gid;
 		} else {
 			logline(log_ERR_, "No such user '%s'", username);
+			return (-1);
 		}
-
 	}
 
 	/* How many threads are there? */
@@ -711,7 +711,11 @@ thread_daemonize(const char *pidfile, const char *username) {
 
 		/* Force the correct uid/gid, otherwise we can't remove it later */
 		if (username != NULL) {
-			fchown(fileno(f), uid, gid);
+			ret = fchown(fileno(f), uid, gid);
+			if (ret != 0) {
+				logline(log_ERR_,
+					 "Could not rename PID file");
+			}
 		}
 
 		fprintf(f, "%d", pid);
