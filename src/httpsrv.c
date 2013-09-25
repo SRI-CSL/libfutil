@@ -1540,11 +1540,13 @@ httpsrv_init(	httpsrv_t *hs,
 	hs->id = ++httpsrv_id;
 	logline(log_DEBUG_, "[hs%" PRIu64 "]", hs->id);
 
+	/* Initialize the connections list */
+	if (!connset_init(&hs->connset)) {
+		return (false);
+	}
+
 	/* Initialize the transaction & sessions list */
 	list_init(&hs->sessions);
-
-	/* Initialize the connections list */
-	connset_init(&hs->connset);
 
 	/* User provided options and callbacks */
 	hs->user		= user;

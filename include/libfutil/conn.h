@@ -24,6 +24,9 @@ typedef struct {
 
 	uint64_t	id;		/* Set ID */
 	int		hifd;		/* Highest FD */
+
+	uint64_t	triggers;	/* Number of outstanding triggers */
+	int		pipe[2];	/* Control Pipe (force timeout, exit etc) */
 } connset_t;
 
 /* Apache also has a conn_state_t thus call ours connstate_t */
@@ -207,7 +210,7 @@ bool conn_wnt_out(conn_t *conn);
 bool conn_poll_in(conn_t *conn);
 bool conn_poll_out(conn_t *conn);
 
-void connset_init(connset_t *cs);
+bool connset_init(connset_t *cs);
 void connset_destroy(connset_t *cs);
 int connset_poll(connset_t *cs);
 

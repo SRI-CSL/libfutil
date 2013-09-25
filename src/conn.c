@@ -1,6 +1,7 @@
 #include <libfutil/conn.h>
 
 /* XXX: conn_id + connset_id are not mutex'ed thus could race in theory */
+/* XXX: WIN32 support needs to be re-added as pipe() is not there */
 
 /*
  * Debug polling mechanism - enables extra checks and fassert()s
@@ -56,6 +57,369 @@ connset_list(connset_t *cs, hlist_t *l) {
 		(l == &cs->handling	? "handling" :
 		(l == NULL		? "<none>" :
 					  "<unknown>")))));
+}
+
+void
+connset_trigger_clear(connset_t *cs, fd_set *fd_r);
+void
+connset_trigger_clear(connset_t *cs, fd_set *fd_r) {
+	char buf;
+
+	/* Reset the trigger count */
+	if (cs->triggers == 0)
+		return;
+
+	/* No need to read when the bit is not set */
+	if (!FD_ISSET(cs->pipe[0], fd_r))
+		return;
+
+	/* Reset the count */
+	cs->triggers = 0;
+
+	/* Receive the triggers */
+	while (read(cs->pipe[0], &buf, 1) == 1);
+}
+
+/* Locked by caller */
+void
+connset_trigger_set(connset_t *cs);
+void
+connset_trigger_set(connset_t *cs) {
+	/*
+	 * Only trigger when it was not triggered yet
+	 * this avoids unnessecary pipe interaction
+	 */
+	if (cs->triggers == 0) {
+		/* Trigger it one more time */
+		cs->triggers++;
+		write(cs->pipe[1], "F", 1);
+	}
+}
+
+/* Locked by caller */
+bool
+connset_init(connset_t *cs) {
+	/* Unique connection number, for easy debugging */
+	static unsigned int	connset_id = 0;
+
+	/* A new one */
+	memzero(cs, sizeof *cs);
+	cs->id = ++connset_id;
+
+	/* Try creating the pipe first */
+	cs->pipe[0] = cs->pipe[1] = -1;
+	if (pipe(cs->pipe) == -1) {
+		return (false);
+		
+	}
+
+	/* The pipes should be non-blocking */
+	if (fcntl(cs->pipe[0], F_SETFL, O_NONBLOCK) == -1) {
+		logline(log_ERR_, "fcntl(pipe) failed");
+		return (false);
+	}
+
+	/* Initialize the rest */
+	mutex_init(cs->mutex);
+	list_init(&cs->active);
+	list_init(&cs->ready);
+	list_init(&cs->inactive);
+	list_init(&cs->handling);
+
+	logline(log_DEBUG_,
+		"active: " LIST_ID
+		", ready: " LIST_ID
+		", inactive: " LIST_ID
+		", handling: " LIST_ID,
+		list_id(&cs->active),
+		list_id(&cs->ready),
+		list_id(&cs->inactive),
+		list_id(&cs->handling)
+		);
+
+	FD_ZERO(&cs->fd_read);
+	FD_ZERO(&cs->fd_write);
+
+	/* We are interrested in reading as then something triggered it */
+	FD_SET(cs->pipe[0], &cs->fd_read);
+
+	/* Negative is the maximum */
+	cs->hifd = -1;
+
+	return (true);
+}
+
+static unsigned int
+connset_destroy_list(hlist_t *l, const char *state);
+static unsigned int
+connset_destroy_list(hlist_t *l, const char *state) {
+	unsigned int	i = 0;
+	conn_t		*conn;
+
+	while ((conn = (conn_t *)list_pop(l))) {
+		conn->connset = NULL;
+		conn->connset_l = NULL;
+
+		i++;
+		logline(log_DEBUG_,
+			"closing %s " CONN_ID,
+			state, conn_id(conn));
+		conn_destroy(conn);
+		mfree(conn, sizeof *conn, "conn");
+	}
+
+	return (i);
+}
+
+void
+connset_destroy(connset_t *cs) {
+	unsigned int	i;
+
+	do {
+		i  = connset_destroy_list(&cs->handling,"handling");
+		i += connset_destroy_list(&cs->active,	"active");
+		i += connset_destroy_list(&cs->ready,	"ready");
+		i += connset_destroy_list(&cs->inactive,"inactive");
+	} while (i > 0);
+
+	/* Should always be empty */
+	fassert(connset_is_empty(cs));
+
+	/* Close the pipes */
+	for (i=0; i < lengthof(cs->pipe); i++) {
+		if (cs->pipe[i] != -1) {
+			close(cs->pipe[i]);
+			cs->pipe[i] = -1;
+		}
+	}
+
+	/* Destroy lists */
+	list_destroy(&cs->ready);
+	list_destroy(&cs->active);
+	list_destroy(&cs->inactive);
+	mutex_destroy(cs->mutex);
+}
+
+#ifdef POLLDEBUG
+static void
+connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w);
+static void
+connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w) {
+	conn_t		*conn, *conn_next;
+	
+	list_lock(l);
+	list_for(l, conn, conn_next, conn_t *) {
+		logline(log_DEBUG_,
+			"  %s: " CONN_ID " " SOCK_ID
+			", (i:%s/%s o:%s/%s) out: %" PRIu64,
+			type,
+			conn_id(conn),
+			conn_sock(conn),
+			yesno(conn_wnt_in(conn)),
+			yesno(FD_ISSET(conn->sock, fd_r)),
+			yesno(conn_wnt_out(conn)),
+			yesno(FD_ISSET(conn->sock, fd_w)),
+			conn_flushleft(conn));
+	}
+	list_unlock(l);
+}
+#endif
+
+int
+connset_poll(connset_t *cs) {
+	struct timeval	timeout;
+	conn_t		*conn, *conn_next;
+	fd_set		fd_r, fd_w;
+	int		i, errsv, hifd;
+#ifdef POLLDEBUG
+	int		j;
+#endif
+
+	while (true) {
+		/* logline(log_DEBUG_, "..."); */
+		connset_lock(cs);
+
+		/* What we want to check */
+		hifd = cs->hifd + 1;
+		memcpy(&fd_r, &cs->fd_read, sizeof fd_r);
+		memcpy(&fd_w, &cs->fd_write, sizeof fd_w);
+
+#ifdef POLLDEBUG
+		logline(log_DEBUG_, "Pre-select:");
+
+		for (i = 0; i < hifd; i++) {
+			if (FD_ISSET(i, &fd_r))
+				logline(log_DEBUG_, "   read: " SOCK_ID, i);
+			if (FD_ISSET(i, &fd_w))
+				logline(log_DEBUG_, "   write: " SOCK_ID, i);
+		}
+
+		connset_poll_list("act", &cs->active,	&fd_r, &fd_w);
+		connset_poll_list("rdy", &cs->ready,	&fd_r, &fd_w);
+		connset_poll_list("ina", &cs->inactive, &fd_r, &fd_w);
+		connset_poll_list("hdl", &cs->handling, &fd_r, &fd_w);
+#endif
+
+		connset_unlock(cs);
+
+		/*
+		 * Timeout every second, we get triggered
+		 * when we need to be quicker
+		 */
+		timeout.tv_sec = 1;
+		timeout.tv_usec = 0;
+
+		thread_setstate(thread_state_select);
+		errno = 0;
+		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
+ 		errsv = errno;
+		thread_setstate(thread_state_running);
+
+#ifdef POLLDEBUG
+		logline(log_DEBUG_,
+			"i = %d/%u, errno = %d",
+			i, hifd, errsv);
+#endif
+
+		if (i < 0) {
+			/* Ignore signals */
+			if (errsv == EINTR) {
+				logline(log_NOTICE_, "Select Interrupted");
+			} else if (errsv == EBADF) {
+				/*
+				 * As we are multi-threaded a
+				 * socket might disappear while we are
+				 * checking it
+				 */
+				logline(log_NOTICE_, "Bad Filedescriptor");
+				continue;
+			} else {
+				logline(log_ERR_, "Select Failed");
+			}
+
+			return (-1);
+		}
+
+		/* Timeout or needing to stop running? */
+		if (i == 0 || !thread_keep_running()) {
+			/* logline(log_DEBUG_, "Timeout"); */
+			break;
+		}
+
+#ifdef POLLDEBUG
+		/* How many did we find active? */
+		j = 0;
+#endif
+		/* Lock the connset first */
+		connset_lock(cs);
+
+		/* Clear outstanding events */
+		connset_trigger_clear(cs, &fd_r);
+
+		/* Check clients and move them from active to ready */
+		list_lock(&cs->active);
+		list_for(&cs->active, conn, conn_next, conn_t *) {
+			/* Sanity check */
+			fassert(cs == conn->connset);
+
+			logline(log_DEBUG_,
+				CONN_ID " checking " SOCK_ID
+				", (i:%s/%s o:%s/%s)",
+				conn_id(conn),
+				conn_sock(conn),
+				yesno(conn_wnt_in(conn)),
+				yesno(FD_ISSET(conn->sock, &fd_r)),
+				yesno(conn_wnt_out(conn)),
+				yesno(FD_ISSET(conn->sock, &fd_w)));
+
+			/* No events found for this one yet */
+			conn->hasevents = 0;
+
+			if (FD_ISSET(conn->sock, &fd_r)) {
+				if (conn_wnt_in(conn)) {
+					conn->hasevents |= CONN_POLLIN;
+#ifdef POLLDEBUG
+					j++;
+#endif
+				} else {
+					logline(log_DEBUG_,
+						CONN_ID " have IN signal, "
+						"but did not want",
+						conn_id(conn));
+#ifdef POLLDEBUG
+					fassert(false);
+#endif
+				}
+			}
+
+			if (FD_ISSET(conn->sock, &fd_w)) {
+				if (conn_wnt_out(conn)) {
+					conn->hasevents |= CONN_POLLOUT;
+#ifdef POLLDEBUG
+					j++;
+#endif
+				} else {
+					logline(log_DEBUG_,
+						CONN_ID " have OUT signal, "
+						"but did not want",
+						conn_id(conn));
+#ifdef POLLDEBUG
+					fassert(false);
+#endif
+				}
+			}
+
+			if (conn->hasevents != 0) {
+				logline(log_DEBUG_,
+					CONN_ID " Adding to ready list",
+					conn_id(conn));
+
+				/*
+				 * Move it to the ready list
+				 * (active is locked)
+				 *
+				 * Clear the bits so that select() does
+				 * not notice them
+				 */
+				FD_CLR(conn->sock, &conn->connset->fd_read);
+				FD_CLR(conn->sock, &conn->connset->fd_write);
+
+				fassert(conn->connset_l == &conn->connset->active);
+				list_remove(&conn->connset->active,
+					    &conn->node);
+
+				conn->connset_l = &conn->connset->ready;
+				list_addtail_l(&conn->connset->ready,
+					       &conn->node);
+
+				logline(log_DEBUG_,
+					CONN_ID " Added to list: ready",
+					conn_id(conn));
+			}
+		}
+
+
+#ifdef POLLDEBUG
+		if (i != j) {
+			logline(log_DEBUG_, "Got response for %u/%u socks, but only had %u", i, hifd, j);
+
+			for (i = 0; i < hifd; i++) {
+				if (FD_ISSET(i, &fd_r))
+					logline(log_DEBUG_, "   read: " SOCK_ID, i);
+				if (FD_ISSET(i, &fd_w))
+					logline(log_DEBUG_, "   write: " SOCK_ID, i);
+			}
+
+			logline(log_DEBUG_, "----------------");
+			fassert(false);
+		}
+#endif
+		list_unlock(&cs->active);
+
+		connset_unlock(cs);
+	}
+
+	return (0);
 }
 
 static void
@@ -827,6 +1191,7 @@ conn_eventsA(conn_t *conn, uint16_t events);
 static void
 conn_eventsA(conn_t *conn, uint16_t events) {
 	hlist_t *new_l;
+	bool	changed;
 
 	fassert(conn_is_valid(conn));
 
@@ -857,20 +1222,33 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		/* Currently monitoring for something? */
 		if ((conn->wntevents & CONN_POLLIN) !=
 		          (events & CONN_POLLIN)) {
-			/* Remove the bit? */
+
 			if (events & CONN_POLLIN)
 				FD_SET(conn->sock, &conn->connset->fd_read);
 			else
 				FD_CLR(conn->sock, &conn->connset->fd_read);
+
+			changed = true;
 		}
 
 		if ((conn->wntevents & CONN_POLLOUT) !=
 		          (events & CONN_POLLOUT)) {
-			/* Remove the bit? */
+
 			if (events & CONN_POLLOUT)
 				FD_SET(conn->sock, &conn->connset->fd_write);
 			else
 				FD_CLR(conn->sock, &conn->connset->fd_write);
+
+			changed = true;
+		}
+
+		if (changed) {
+			/*
+			 * Trigger the change
+			 * this 'aborts' the select()
+			 * that it is likely in directly
+			 */
+			connset_trigger_set(conn->connset);
 		}
 
 		logline(log_DEBUG_,
@@ -1014,307 +1392,6 @@ conn_destroy(conn_t *conn) {
 }
 
 void
-connset_init(connset_t *cs) {
-	/* Unique connection number, for easy debugging */
-	static unsigned int	connset_id = 0;
-
-	/* A new one */
-	memzero(cs, sizeof *cs);
-	cs->id = ++connset_id;
-
-	mutex_init(cs->mutex);
-	list_init(&cs->active);
-	list_init(&cs->ready);
-	list_init(&cs->inactive);
-	list_init(&cs->handling);
-
-	logline(log_DEBUG_,
-		"active: " LIST_ID
-		", ready: " LIST_ID
-		", inactive: " LIST_ID
-		", handling: " LIST_ID,
-		list_id(&cs->active),
-		list_id(&cs->ready),
-		list_id(&cs->inactive),
-		list_id(&cs->handling)
-		);
-
-	FD_ZERO(&cs->fd_read);
-	FD_ZERO(&cs->fd_write);
-
-	/* Negative is the maximum */
-	cs->hifd = -1;
-}
-
-static unsigned int
-connset_destroy_list(hlist_t *l, const char *state);
-static unsigned int
-connset_destroy_list(hlist_t *l, const char *state) {
-	unsigned int	i = 0;
-	conn_t		*conn;
-
-	while ((conn = (conn_t *)list_pop(l))) {
-		conn->connset = NULL;
-		conn->connset_l = NULL;
-
-		i++;
-		logline(log_DEBUG_,
-			"closing %s " CONN_ID,
-			state, conn_id(conn));
-		conn_destroy(conn);
-		mfree(conn, sizeof *conn, "conn");
-	}
-
-	return (i);
-}
-
-void
-connset_destroy(connset_t *cs) {
-	unsigned int	i;
-
-	do {
-		i  = connset_destroy_list(&cs->handling,"handling");
-		i += connset_destroy_list(&cs->active,	"active");
-		i += connset_destroy_list(&cs->ready,	"ready");
-		i += connset_destroy_list(&cs->inactive,"inactive");
-	} while (i > 0);
-
-	/* Should always be empty */
-	fassert(connset_is_empty(cs));
-
-	list_destroy(&cs->ready);
-	list_destroy(&cs->active);
-	list_destroy(&cs->inactive);
-	mutex_destroy(cs->mutex);
-}
-
-#ifdef POLLDEBUG
-static void
-connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w);
-static void
-connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w) {
-	conn_t		*conn, *conn_next;
-	
-	list_lock(l);
-	list_for(l, conn, conn_next, conn_t *) {
-		logline(log_DEBUG_,
-			"  %s: " CONN_ID " " SOCK_ID
-			", (i:%s/%s o:%s/%s) out: %" PRIu64,
-			type,
-			conn_id(conn),
-			conn_sock(conn),
-			yesno(conn_wnt_in(conn)),
-			yesno(FD_ISSET(conn->sock, fd_r)),
-			yesno(conn_wnt_out(conn)),
-			yesno(FD_ISSET(conn->sock, fd_w)),
-			conn_flushleft(conn));
-	}
-	list_unlock(l);
-}
-#endif
-
-int
-connset_poll(connset_t *cs) {
-	struct timeval	timeout;
-	conn_t		*conn, *conn_next;
-	fd_set		fd_r, fd_w;
-	int		i, errsv, hifd;
-#ifdef POLLDEBUG
-	int		j;
-#endif
-
-	while (true) {
-		/* logline(log_DEBUG_, "..."); */
-		connset_lock(cs);
-
-		/* What we want to check */
-		hifd = cs->hifd + 1;
-		memcpy(&fd_r, &cs->fd_read, sizeof fd_r);
-		memcpy(&fd_w, &cs->fd_write, sizeof fd_w);
-
-#ifdef POLLDEBUG
-		logline(log_DEBUG_, "Pre-select:");
-
-		for (i = 0; i < hifd; i++) {
-			if (FD_ISSET(i, &fd_r))
-				logline(log_DEBUG_, "   read: " SOCK_ID, i);
-			if (FD_ISSET(i, &fd_w))
-				logline(log_DEBUG_, "   write: " SOCK_ID, i);
-		}
-
-		connset_poll_list("act", &cs->active,	&fd_r, &fd_w);
-		connset_poll_list("rdy", &cs->ready,	&fd_r, &fd_w);
-		connset_poll_list("ina", &cs->inactive, &fd_r, &fd_w);
-		connset_poll_list("hdl", &cs->handling, &fd_r, &fd_w);
-#endif
-
-		connset_unlock(cs);
-
-		/*
-		 * Timeout every 1/10th of a second = 100.000 microseconds
-		 * (1 sec = 1.000.000 usec / microseconds)
-		 * to let the main program check if it needs to abort etc
-		 * note that this also gives the chance to add new FDs
-		 */
-#ifdef POLLDEBUG
-		timeout.tv_sec = 1;
-		timeout.tv_usec = 0;
-#else
-		timeout.tv_sec = 0;
-		timeout.tv_usec = (100 * 1000);
-#endif
-
-		thread_setstate(thread_state_select);
-		errno = 0;
-		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
- 		errsv = errno;
-		thread_setstate(thread_state_running);
-
-#ifdef POLLDEBUG
-		logline(log_DEBUG_,
-			"i = %d/%u, errno = %d",
-			i, hifd, errsv);
-#endif
-
-		if (i < 0) {
-			/* Ignore signals */
-			if (errsv == EINTR) {
-				logline(log_NOTICE_, "Select Interrupted");
-			} else if (errsv == EBADF) {
-				/*
-				 * As we are multi-threaded a
-				 * socket might disappear while we are
-				 * checking it
-				 */
-				logline(log_NOTICE_, "Bad Filedescriptor");
-				continue;
-			} else {
-				logline(log_ERR_, "Select Failed");
-			}
-
-			return (-1);
-		}
-
-		/* Timeout */
-		if (i == 0) {
-			/* logline(log_DEBUG_, "Timeout"); */
-			break;
-		}
-
-#ifdef POLLDEBUG
-		/* How many did we find active? */
-		j = 0;
-#endif
-		/* Lock the connset first */
-		connset_lock(cs);
-
-		/* Check clients and move them from active to ready */
-		list_lock(&cs->active);
-		list_for(&cs->active, conn, conn_next, conn_t *) {
-			/* Sanity check */
-			fassert(cs == conn->connset);
-
-			logline(log_DEBUG_,
-				CONN_ID " checking " SOCK_ID
-				", (i:%s/%s o:%s/%s)",
-				conn_id(conn),
-				conn_sock(conn),
-				yesno(conn_wnt_in(conn)),
-				yesno(FD_ISSET(conn->sock, &fd_r)),
-				yesno(conn_wnt_out(conn)),
-				yesno(FD_ISSET(conn->sock, &fd_w)));
-
-			/* No events found for this one yet */
-			conn->hasevents = 0;
-
-			if (FD_ISSET(conn->sock, &fd_r)) {
-				if (conn_wnt_in(conn)) {
-					conn->hasevents |= CONN_POLLIN;
-#ifdef POLLDEBUG
-					j++;
-#endif
-				} else {
-					logline(log_DEBUG_,
-						CONN_ID " have IN signal, "
-						"but did not want",
-						conn_id(conn));
-#ifdef POLLDEBUG
-					fassert(false);
-#endif
-				}
-			}
-
-			if (FD_ISSET(conn->sock, &fd_w)) {
-				if (conn_wnt_out(conn)) {
-					conn->hasevents |= CONN_POLLOUT;
-#ifdef POLLDEBUG
-					j++;
-#endif
-				} else {
-					logline(log_DEBUG_,
-						CONN_ID " have OUT signal, "
-						"but did not want",
-						conn_id(conn));
-#ifdef POLLDEBUG
-					fassert(false);
-#endif
-				}
-			}
-
-			if (conn->hasevents != 0) {
-				logline(log_DEBUG_,
-					CONN_ID " Adding to ready list",
-					conn_id(conn));
-
-				/*
-				 * Move it to the ready list
-				 * (active is locked)
-				 *
-				 * Clear the bits so that select() does
-				 * not notice them
-				 */
-				FD_CLR(conn->sock, &conn->connset->fd_read);
-				FD_CLR(conn->sock, &conn->connset->fd_write);
-
-				fassert(conn->connset_l == &conn->connset->active);
-				list_remove(&conn->connset->active,
-					    &conn->node);
-
-				conn->connset_l = &conn->connset->ready;
-				list_addtail_l(&conn->connset->ready,
-					       &conn->node);
-
-				logline(log_DEBUG_,
-					CONN_ID " Added to list: ready",
-					conn_id(conn));
-			}
-		}
-
-
-#ifdef POLLDEBUG
-		if (i != j) {
-			logline(log_DEBUG_, "Got response for %u/%u socks, but only had %u", i, hifd, j);
-
-			for (i = 0; i < hifd; i++) {
-				if (FD_ISSET(i, &fd_r))
-					logline(log_DEBUG_, "   read: " SOCK_ID, i);
-				if (FD_ISSET(i, &fd_w))
-					logline(log_DEBUG_, "   write: " SOCK_ID, i);
-			}
-
-			logline(log_DEBUG_, "----------------");
-			fassert(false);
-		}
-#endif
-		list_unlock(&cs->active);
-
-		connset_unlock(cs);
-	}
-
-	return (0);
-}
-
-void
 conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
 	/* should not be set multiple times */
 	fassert(conn->posthandle_f == NULL);
@@ -1328,7 +1405,7 @@ conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user) {
  * For conn_get_ready() and conn_get_one_ready() and suggested
  * around conn_accept()
  *
- * This avoids conn_eventA() list swapping when the list is handling thus
+ * This avoids conn_eventsA() list swapping when the list is handling thus
  * avoids connections to go onto the active list and thus being picked up
  * by another thread.
  *
@@ -1426,7 +1503,7 @@ connset_get_one_ready(connset_t *cs) {
 	return (conn);
 }
 
-/* Paired with a conn_get_{one_}ready and thus connset_handling_setup() */
+/* Paired with a connset_get_{one_}ready and thus connset_handling_setup() */
 void
 connset_handling_done(conn_t *conn, bool keeplocked) {
 	hlist_t			*l;
