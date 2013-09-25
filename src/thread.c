@@ -394,7 +394,7 @@ thread_stopall(bool force) {
 	mythread_t	*t, *tn;
 	os_thread_id	tid = getthisthreadid();
 
-	logline(log_DEBUG_, "Signalling thread that they should exit");
+	logline(log_DEBUG_, "Signalling threads that they should exit");
 
 	/* Must be initialized */
 	fassert(l_threads != NULL);
