@@ -1088,7 +1088,7 @@ aprintf(const char *format, ...) {
 	va_end(ap);
 
 	/* Second attempt failed or made it even bigger? */
-	if (r <= 0 || (unsigned int)r > size) {
+	if (!snprintfok(r, size)) {
 		logline(log_ERR_, "Second attempt failed");
 		mfree(buf, size, "aprintf");
 		return (NULL);
