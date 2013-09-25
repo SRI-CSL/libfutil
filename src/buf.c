@@ -12,7 +12,7 @@ buf_unlock(buf_t *buf) {
 
 bool
 buf_init(buf_t *buf) {
-	logline(log_DEBUG_, "(%p)", (void *)buf);
+	log_dbg( "(%p)", (void *)buf);
 
 	/* Empty it out */
 	memzero(buf, sizeof *buf);
@@ -24,7 +24,7 @@ buf_init(buf_t *buf) {
 	buf->size = (4 * 1024);
 	buf->buf = (void *)calloc(1, buf->size);
 	if (buf->buf == NULL) {
-		logline(log_DEBUG_, "(%p)", (void *)buf);
+		log_dbg( "(%p)", (void *)buf);
 		return (false);
 	}
 
@@ -38,7 +38,7 @@ buf_init(buf_t *buf) {
 /* Destroy the mutex, final cleanup */
 void
 buf_destroy(buf_t *buf) {
-	logline(log_DEBUG_, "(%p)", (void *)buf);
+	log_dbg( "(%p)", (void *)buf);
 
 	if (buf->buf)
 		free(buf->buf);
@@ -110,7 +110,7 @@ buf_willfit(buf_t *buf, unsigned int len) {
 
 	/* Limit to 100 MiB, something wrong if it gets bigger */
 	if (ns > (100 * 1024 * 1024)) {
-		logline(log_ERR_,
+		log_err(
 			"Wanted more than 100 MiB (%" PRIu64 ")", ns);
 		fassert(false);
 		return (false);
@@ -119,7 +119,7 @@ buf_willfit(buf_t *buf, unsigned int len) {
 	/* Get more memory */
 	b = realloc(buf->buf, ns);
 	if (!b) {
-		logline(log_ERR_, "Out of memory (%" PRIu64 ")", ns);
+		log_err( "Out of memory (%" PRIu64 ")", ns);
 		fassert(false);
 		return (false);
 	}
@@ -189,7 +189,7 @@ buf_vprintf(buf_t *buf, const char *fmt, va_list ap) {
 			continue;
 		}
 
-		logline(log_ERR_,
+		log_err(
 			"Could not add more, buffer too full "
 			"(%u > %" PRIu64 " + %" PRIu64 ")",
 			len, left, buf->offset);

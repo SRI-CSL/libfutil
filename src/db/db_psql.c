@@ -21,7 +21,7 @@ db_noticeprocessor(void UNUSED *arg, const char *message) {
 		return;
 	}
 
-	logline(log_INFO, "PSQL", "%s", message);
+	logline(LOG_INFO, "PSQL", "%s", message);
 }
 
 /* Initialize a db structure. */
@@ -93,22 +93,20 @@ db_tryconnect(dbconn_t *db) {
 	assert(!db->conn);
 
 	if (!db->conninfo) {
-		logline(log_ERR_,
-			"No connection information available, "
+		log_err("No connection information available, "
 			"thus can't connect");
 		db->conn = NULL;
 		return (false);
 	}
 
 	/* Make a connection to the database */
-	logline(log_DEBUG_, "Connecting %p to: %s", (void *)db, db->conninfo);
+	log_dbg("Connecting %p to: %s", (void *)db, db->conninfo);
 	db->conn = PQconnectdb(db->conninfo);
-	logline(log_DEBUG_, "Connecting %p to: %s - done", (void *)db, db->conninfo);
+	log_dbg("Connecting %p to: %s - done", (void *)db, db->conninfo);
 
 	/* Check to see that the backend connection was successfully made */
 	if (PQstatus(db->conn) != CONNECTION_OK) {
-		logline(log_ERR_,
-			"Connection to database (%s) failed: %s",
+		log_err("Connection to database (%s) failed: %s",
 			db->conninfo,
 			PQerrorMessage(db->conn));
 		PQfinish(db->conn);
@@ -131,10 +129,11 @@ static bool
 db_connect(dbconn_t *db) {
 	unsigned int	i, max = 3;
 
-	if (db->keeptrying)
-		logline(log_DEBUG_, "(keep trying)");
-	else
-		logline(log_DEBUG_, "(maxtries = %u)", max);
+	if (db->keeptrying) {
+		log_dbg( "(keep trying)"); 
+	} else {
+		log_dbg( "(maxtries = %u)", max);
+	}
 
 	/* Already connected? (Should not come here then) */
 	assert(db->conn == NULL);
@@ -144,11 +143,11 @@ db_connect(dbconn_t *db) {
 			break;
 
 		if (!thread_keep_running()) {
-			logline(log_DEBUG_, "Stop running");
+			log_dbg( "Stop running");
 			break;
 		}
 
-		logline(log_WARNING_,
+		log_wrn(
 			"Connection attempt failed, "
 			"trying again (attempt %u/%u%s)",
 			i+1, max, db->keeptrying ? " [keeptrying]" : "");
@@ -248,8 +247,8 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 	 */
 	if (result->res != NULL)
 	{
-		logline(log_ERR_, "Query still open: %s\n", db->q);
-		logline(log_ERR_, "New Query: %s\n", txt);
+		log_err( "Query still open: %s\n", db->q);
+		log_err( "New Query: %s\n", txt);
 		abort();
 		return (DB_R_ERR);
 	}
@@ -270,7 +269,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		/* Just in case our random amount is not good enough */
 		if (v >= lengthof(vals)) {
-			logline(log_ERR, caller,
+			logline(LOG_ERR, caller,
 				"Too many variable arguments in SQL query: %s",
 				txt);
 			break;
@@ -280,7 +279,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 		case '\0':
 			/* Need to break */
 			rep = DB_R_ERR;
-			logline(log_ERR, caller,
+			logline(LOG_ERR, caller,
 				"Variable at the end of the line");
 			break;
 
@@ -297,7 +296,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"IP Address Variable did not "
 					"fit anymore");
 				break;
@@ -317,7 +316,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"IP Address Variable did not "
 					"fit anymore");
 				break;
@@ -339,7 +338,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"32bit Variable did not "
 					"fit anymore");
 				break;
@@ -361,7 +360,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"64bit Variable did not "
 					"fit anymore");
 				break;
@@ -380,7 +379,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "$%u", v);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"String Variable did not "
 					"fit anymore");
 				break;
@@ -395,7 +394,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "%s", t);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"Direct String did not "
 					"fit anymore");
 				break;
@@ -413,7 +412,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			n = snprintf(&db->q[o], sizeof db->q - o, "'%s'", t);
 			if (!snprintfok(n, sizeof db->q - o)) {
 				rep = DB_R_ERR;
-				logline(log_ERR, caller,
+				logline(LOG_ERR, caller,
 					"Type did not fit anymore");
 				break;
 			}
@@ -423,7 +422,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		default:
 			rep = DB_R_ERR;
-			logline(log_ERR, caller,
+			logline(LOG_ERR, caller,
 				"Unknown Variable Type %%%c",
 				txt[i]);
 			break;
@@ -437,7 +436,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 	/* Failed already? */
 	if (rep != DB_R_OK) {
-		logline(log_ERR, caller, "String setup failed");
+		logline(LOG_ERR, caller, "String setup failed");
 		mutex_unlock(db->mutex);
 		return (DB_R_ERR);
 	}
@@ -449,7 +448,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 		if (db->conn == NULL)
 			db_connect(db);
 		if (db->conn == NULL) {
-			logline(log_ALERT, caller, "No connection");
+			logline(LOG_ALERT, caller, "No connection");
 			mutex_unlock(db->mutex);
 			return (DB_R_ERR);
 		}
@@ -460,7 +459,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		/* If we got results, all is fine */
 		if (result->res == NULL) {
-			logline(log_ERR_, "Query(%s) - no result", db->q);
+			log_err( "Query(%s) - no result", db->q);
 
 			/* Something funky, disconnect it */
 			PQfinish(db->conn);
@@ -489,7 +488,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 			/* Can we retry this? */
 			if (est == PGRES_FATAL_ERROR && r == NULL) {
-				logline(log_WARNING_,
+				log_wrn(
 					"Query(%s) failed, disconnecting",
 					db->q);
 
@@ -502,7 +501,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 			}
 
 			logline(rep == DB_R_ERR ? LOG_ERR : LOG_WARNING,
-				__FILE__, __LINE__, caller,
+				caller,
 				"Query(%s) failed: %u/%s :: %s",
 				db->q,
 				est,
@@ -688,14 +687,14 @@ db_result_field_bool(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_bool(result, row, column, b)) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field is not boolean",
 			field);
 		return (false);
@@ -710,14 +709,14 @@ db_result_field_string(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_string(result, row, column, string)) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field is not string",
 			field);
 		return (false);
@@ -732,14 +731,14 @@ db_result_field_uint32(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_uint32(result, row, column, t32)) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field is not number",
 			field);
 		return (false);
@@ -754,14 +753,14 @@ db_result_field_uint64(dbres_t *result, const char *caller, unsigned int row,
 	int column = PQfnumber(result->res, field);
 
 	if (column == -1) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field missing, check the SQL",
 			field);
 		return (false);
 	}
 
 	if (!db_result_get_uint64(result, row, column, t64)) {
-		logline(log_ERR, caller,
+		logline(LOG_ERR, caller,
 			"%s field is not number",
 			field);
 		return (false);
@@ -789,7 +788,7 @@ db_create(dbconn_t *db,
 			       tables[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_ERR_,
+			log_err(
 				"Failure in dropping table '%s'",
 				tables[i]);
 			return (false);
@@ -803,7 +802,7 @@ db_create(dbconn_t *db,
 			       types[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_ERR_,
+			log_err(
 				"Failure in dropping type '%s'",
 				types[i]);
 			return (false);
@@ -815,7 +814,7 @@ db_create(dbconn_t *db,
 		rep = db_query(db, &res, __func__, typeQs[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_ERR_,
+			log_err(
 				"Could not create type '%s'",
 				types[i]);
 			return (false);
@@ -827,14 +826,14 @@ db_create(dbconn_t *db,
 		rep = db_query(db, &res, __func__, tableQs[i]);
 		db_query_finish(db, &res);
 		if (rep != DB_R_OK) {
-			logline(log_ERR_,
+			log_err(
 				"Could not create table '%s'",
 				tables[i]);
 			return (false);
 		}
 	}
 
-	logline(log_INFO_,
+	log_inf(
 		"Database tables are now ready for use");
 	return (true);
 }
@@ -859,11 +858,9 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 	/* Connect, but as postgresql user, thus just db name. */
 	/* This should be run as a user with perms to do so */
 	if (!db_tryconnect(db)) {
-		logline(log_ALERT_,
-			"Could not connect to database with postgres "
+		log_alt("Could not connect to database with postgres "
 			"user rights");
-		logline(log_ALERT_,
-			"Database setup needs to be run as the 'postgres' "
+		log_alt("Database setup needs to be run as the 'postgres' "
 			"user, as such: sudo postgres -c ddb setup_psql");
 		mutex_unlock(db->mutex);
 		return (false);
@@ -880,8 +877,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		       db->dbname);
 	db_query_finish(db, res);
 	if (rep != DB_R_OK) {
-		logline(log_ALERT_,
-			"CREATE DATABASE failed: %s",
+		log_alt("CREATE DATABASE failed: %s",
 			PQerrorMessage(db->conn));
 		return (false);
 	}
@@ -892,7 +888,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		       db->dbuser);
 	db_query_finish(db, res);
 	if (rep != DB_R_OK) {
-		logline(log_ALERT_, "DROP USER failed: %s",
+		log_alt("DROP USER failed: %s",
 			PQerrorMessage(db->conn));
 		return (false);
 	}
@@ -903,7 +899,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		       db->dbuser);
 	db_query_finish(db, res);
 	if (rep != DB_R_OK) {
-		logline(log_ALERT_, "CREATE USER failed: %s",
+		log_alt("CREATE USER failed: %s",
 			PQerrorMessage(db->conn));
 		return (false);
 	}
@@ -915,7 +911,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		       db->dbname, db->dbuser);
 	db_query_finish(db, res);
 	if (rep != DB_R_OK) {
-		logline(log_ALERT_, "CREATE DATABASE failed: %s",
+		log_alt("CREATE DATABASE failed: %s",
 			PQerrorMessage(db->conn));
 		return (false);
 	}
@@ -931,7 +927,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		libver / 10000, libver % 1000 / 100);
 	fo = fopen(fold, "r+");
 	if (!fo) {
-		logline(log_ALERT_, "Could not open pg_hba (%s): %u",
+		log_alt("Could not open pg_hba (%s): %u",
 			fold, errno);
 		return (false);
 	}
@@ -942,7 +938,7 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 		libver / 10000, libver % 1000 / 100);
 	fn = fopen(fnew, "w+");
 	if (!fn) {
-		logline(log_ALERT_, "Could not open pg_hba (%s): %u",
+		log_alt("Could not open pg_hba (%s): %u",
 			fnew, errno);
 		return (false);
 	}
@@ -966,13 +962,13 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 	fclose(fo);
 
 	if (already) {
-		logline(log_INFO_, "%s already ok", fold);
+		log_inf( "%s already ok", fold);
 
 		/* Remove the new one as it has our line already */
 		unlink(fnew);
 	}
 	else {
-		logline(log_INFO_, "Updating %s for permissions", fold);
+		log_inf( "Updating %s for permissions", fold);
 
 		/* Replace it */
 		rename(fnew, fold);

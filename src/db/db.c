@@ -22,8 +22,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 	}
 
 	if (!f) {
-		logline(log_ALERT_,
-			"Could not find schema %s, "
+		log_alt("Could not find schema %s, "
 			"please change directory to location of the schema",
 			schema);
 			return (false);
@@ -63,7 +62,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 
 		/* Append it to the query */
 		if (sizeof q - ql <= l) {
-			logline(log_ERR_, "Line %u too long", linenum);
+			log_err( "Line %u too long", linenum);
 			drep = DB_R_ERR;
 			break;
 		}
@@ -81,7 +80,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 		drep = db_query(&db, &res, __func__, q);
 		db_query_finish(&db, &res);
 		if (drep != DB_R_OK) {
-			logline(log_ERR_, "Query(%s) failed (line: %u)",
+			log_err( "Query(%s) failed (line: %u)",
 				q, linenum);
 			break;
 		}
@@ -92,7 +91,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 	}
 
 	if (drep == DB_R_OK && strlen(q) > 0) {
-		logline(log_WARNING_,
+		log_wrn(
 			"Left over string in query buffer: %s",
 			q);
 		drep = DB_R_OK;
@@ -114,7 +113,7 @@ db_result_initcolcache(dbres_t *result, const dbfield_t *fields,
 	for (c = 0; fields[c].type != DB_T_NONE; c++) {
 		colcache[c] = db_result_columnno(result, fields[c].name);
 		if (colcache[c] == -1) {
-			logline(log_ERR_, "Missing column %s, check the SQL",
+			log_err( "Missing column %s, check the SQL",
 				fields[c].name);
 
 			/* We fail at the end thus showing all missing fields */
@@ -141,7 +140,7 @@ db_result_get(dbres_t *result, unsigned int row, const dbfield_t *fields,
 		case DB_T_STRING:
 			if (!db_result_get_string(result, row,
 						  colcache[c], results[c])) {
-				logline(log_ERR_,
+				log_err(
 					"field '%s' is not a string",
 					fields[c].name);
 				return (false);
@@ -151,7 +150,7 @@ db_result_get(dbres_t *result, unsigned int row, const dbfield_t *fields,
 		case DB_T_ENUM:
 			if (!db_result_get_enum(result, row,
 						  colcache[c], results[c])) {
-				logline(log_ERR_,
+				log_err(
 					"field '%s' is not an enum",
 					fields[c].name);
 				return (false);
@@ -161,7 +160,7 @@ db_result_get(dbres_t *result, unsigned int row, const dbfield_t *fields,
 		case DB_T_UINT32:
 			if (!db_result_get_uint32(result, row,
 						  colcache[c], results[c])) {
-				logline(log_ERR_,
+				log_err(
 					"field '%s' is not a uint32",
 					fields[c].name);
 				return (false);
@@ -171,7 +170,7 @@ db_result_get(dbres_t *result, unsigned int row, const dbfield_t *fields,
 		case DB_T_UINT64:
 			if (!db_result_get_uint64(result, row,
 						  colcache[c], results[c])) {
-				logline(log_ERR_,
+				log_err(
 					"field '%s' is not a uint64",
 					fields[c].name);
 				return (false);
@@ -181,7 +180,7 @@ db_result_get(dbres_t *result, unsigned int row, const dbfield_t *fields,
 		case DB_T_BOOL:
 			if (!db_result_get_bool(result, row,
 						  colcache[c], results[c])) {
-				logline(log_ERR_,
+				log_err(
 					"field '%s' is not a boolean",
 					fields[c].name);
 				return (false);

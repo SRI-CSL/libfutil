@@ -36,7 +36,7 @@ log_chown(uid_t uid, gid_t gid) {
 		r = fchown(fileno(l_log_output), uid, gid);
 
 		if (r != 0) {
-			logline(log_ERR_, "fchown() failed");
+			log_err( "fchown() failed");
 		}
 	}
 	mutex_unlock(l_mutex);
@@ -62,7 +62,7 @@ log_set(const char *filename) {
 		l_log_output = f;
 		ret = true;
 	} else {
-		logline(log_ERR_,
+		log_err(
 			"Could not open logfile %s",
 			filename);
 		ret = false;
@@ -88,11 +88,10 @@ log_setfunc(logfunc_f func) {
 }
 
 static void
-logitVA(unsigned int level, const char *file, unsigned int line, const char *caller,
-	const char *format, va_list ap) ATTR_FORMAT(printf, 5, 0);
+logitVA(unsigned int level, const char *caller,
+	const char *format, va_list ap) ATTR_FORMAT(printf, 3, 0);
 static void
-logitVA(unsigned int level, const char UNUSED *file,
-	unsigned int UNUSED line, const char *caller,
+logitVA(unsigned int level, const char *caller,
 	const char *format, va_list ap)
 {
 	static uint64_t		id_p = 0;
@@ -247,7 +246,7 @@ log_levelcheck(unsigned int level) {
  *  format SHOULD NOT include "\n"
  */
 void
-logline(unsigned int level, const char *file, unsigned int line, const char *caller,
+logline(unsigned int level, const char *caller,
 	const char *format, ...)
 {
 	static bool		log_break_checked = false;
@@ -263,9 +262,9 @@ logline(unsigned int level, const char *file, unsigned int line, const char *cal
 	va_start(ap, format);
 
 	if (l_log_func)
-		l_log_func(level, file, line, caller, format, ap);
+		l_log_func(level, caller, format, ap);
 	else
-		logitVA(level, file, line, caller, format, ap);
+		logitVA(level, caller, format, ap);
 
 	va_end(ap);
 
@@ -285,8 +284,7 @@ logline(unsigned int level, const char *file, unsigned int line, const char *cal
 
 	if (level <= log_break_level) {
 		va_start(ap, format);
-		logitVA(level, file, line, caller,
-			"Hit Log Break", ap);
+		logitVA(level, caller, "Hit Log Break", ap);
 		va_end(ap);
 
 		/* Crash and Burn */
@@ -557,7 +555,7 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 		/* Will it fit? */
 		if (len > map[i].len) {
 			/* During debugging we want to catch this */
-			logline(log_DEBUG_, "Won't fit! %u vs %u\n",
+			log_dbg( "Won't fit! %u vs %u\n",
 				len, map[i].len);
 			fassert(false);
 			l = map[i].len;
@@ -618,7 +616,7 @@ getpriolevel(const char *name) {
 	}
 
 	/* Not found */
-	logline(log_ERR_,
+	log_err(
 		"Priority level '%s' does not exist",
 		name);
 
@@ -636,13 +634,13 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	/* Open it */
 	f = fopen(dev, "r");
 	if (!f) {
-		logline(log_ERR_, "Could not open %s", dev);
+		log_err( "Could not open %s", dev);
 		return;
 	}
 
 	n = fread(rnd, 1, size, f);
 	if (n != size) {
-		logline(log_ERR_,
+		log_err(
 			"Random read failed, got %" PRIu64 " of %" PRIu64,
 			(uint64_t)n, size);
 	}
@@ -661,7 +659,7 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	}
 
 	if (!CryptGenRandom(hProvider, size, rnd)) {
-		logline(log_ERR_, "CryptGenRandom() failed");
+		log_err( "CryptGenRandom() failed");
 	}
 
 	CryptReleaseContext(hProvider, 0);
@@ -1006,7 +1004,7 @@ inet_pton(int af, const char *src, void *dst) {
 	hints.ai_family = af;
 
 	if (getaddrinfo(src, NULL, &hints, &res) != 0) {
-		logline(log_ERR_, "Couldn't resolve host %s", src);
+		log_err( "Couldn't resolve host %s", src);
 		return (-1);
 	}
 
@@ -1070,7 +1068,7 @@ aprintf(const char *format, ...) {
 	r = vsnprintf(NULL, 0, format, ap);
 	va_end(ap);
 	if (r <= 0) {
-		logline(log_ERR_, "First attempt failed");
+		log_err( "First attempt failed");
 		return (NULL);
 	}
 
@@ -1079,7 +1077,7 @@ aprintf(const char *format, ...) {
 	
 	buf = mcalloc(size + sizeof size, "aprintf");
 	if (buf == NULL) {
-		logline(log_CRIT_, "Out of memory");
+		log_crt( "Out of memory");
 		return (NULL);
 	}
 
@@ -1089,7 +1087,7 @@ aprintf(const char *format, ...) {
 
 	/* Second attempt failed or made it even bigger? */
 	if (!snprintfok(r, size)) {
-		logline(log_ERR_, "Second attempt failed");
+		log_err( "Second attempt failed");
 		mfree(buf, size, "aprintf");
 		return (NULL);
 	}

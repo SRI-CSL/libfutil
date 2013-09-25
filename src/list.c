@@ -3,9 +3,9 @@
 /* Toggle to 1 to get debug output */
 #if 0
 #if 1
-#define LD(t,a) logline(log_DEBUG_, t, a)
-#define LD2(t,a,b) logline(log_DEBUG_, t, a, b)
-#define LD3(t,a,b,c) logline(log_DEBUG_, t, a, b, c)
+#define LD(t,a) log_dbg( t, a)
+#define LD2(t,a,b) log_dbg( t, a, b)
+#define LD3(t,a,b,c) log_dbg( t, a, b, c)
 #else
 #define LD(t,a) fprintf(stderr, "%s: " t "\n", __func__ a)
 #define LD2(t,a,b) fprintf(stderr, "%s: " t "\n", __func__ a, b)
@@ -211,7 +211,7 @@ list_getnext(hlist_t *l) {
 		}
 
 		/* Some kind of trouble thus get out */
-		logline(log_ERR_, "cond_timedwait returned %d", rc);
+		log_err( "cond_timedwait returned %d", rc);
 		fassert(false);
 #else
 		/* XXX: Add support for conditional breaking (win32) */

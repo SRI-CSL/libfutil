@@ -226,33 +226,30 @@ typedef union ipaddress ipaddress_t;
 /**
  ** Logging infrastructure
  **/
-#define log_EMERG	LOG_EMERG,	__FILE__, __LINE__
-#define log_ALERT	LOG_ALERT,	__FILE__, __LINE__
-#define log_CRIT	LOG_CRIT,	__FILE__, __LINE__
-#define log_ERR		LOG_ERR,	__FILE__, __LINE__
-#define log_WARNING	LOG_WARNING,	__FILE__, __LINE__
-#define log_NOTICE	LOG_NOTICE,	__FILE__, __LINE__
-#define log_INFO	LOG_INFO,	__FILE__, __LINE__
-#define log_DEBUG	LOG_DEBUG,	__FILE__, __LINE__
 
-#define log_EMERG_	log_EMERG,	__func__
-#define log_ALERT_	log_ALERT,	__func__
-#define log_CRIT_	log_CRIT,	__func__
-#define log_ERR_	log_ERR,	__func__
-#define log_WARNING_	log_WARNING,	__func__
-#define log_NOTICE_	log_NOTICE,	__func__
-#define log_INFO_	log_INFO,	__func__
-#define log_DEBUG_	log_DEBUG,	__func__
+void logline(unsigned int level, const char *caller, const char *format, ...)
+	     ATTR_FORMAT(printf, 3, 4);
 
-/* in misc.c */
-void logline(unsigned int level, const char *file, unsigned int line,
-	     const char *caller, const char *format, ...)
-	     ATTR_FORMAT(printf, 5, 6);
+#define LOG_ARG __func__
 
-typedef void (*logfunc_f)(unsigned int level, const char *file, unsigned int line,
-			  const char *caller, const char *format,
-			  va_list ap) ATTR_FORMAT(printf, 5, 0);
+/* We completely compile out DEBUG statements */
+#ifdef DEBUG
+#define log_dbg(...) logline(LOG_DEBUG,   LOG_ARG, __VA_ARGS__)
+#else
+#define log_dbg(...) {}
+#endif
 
+#define log_emg(...) logline(LOG_EMERG,   LOG_ARG, __VA_ARGS__)
+#define log_alt(...) logline(LOG_ALERT,   LOG_ARG, __VA_ARGS__)
+#define log_crt(...) logline(LOG_CRIT,    LOG_ARG, __VA_ARGS__)
+#define log_err(...) logline(LOG_ERR,     LOG_ARG, __VA_ARGS__)
+#define log_wrn(...) logline(LOG_WARNING, LOG_ARG, __VA_ARGS__)
+#define log_ntc(...) logline(LOG_NOTICE,  LOG_ARG, __VA_ARGS__)
+#define log_inf(...) logline(LOG_INFO,    LOG_ARG, __VA_ARGS__)
+
+typedef void (*logfunc_f)(unsigned int level, const char *caller,
+			  const char *format, va_list ap)
+			  ATTR_FORMAT(printf, 3, 0);
 
 bool log_set(const char *filename);
 void log_chown(uid_t uid, gid_t gid);

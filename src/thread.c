@@ -57,7 +57,7 @@ static bool
 thread_signal(DWORD UNUSED sig);
 static bool
 thread_signal(DWORD UNUSED sig) {
-	logline(log_ERR_, "Terminating due to CTRL event");
+	log_err( "Terminating due to CTRL event");
 	thread_stop_running();
 	return (true);
 }
@@ -67,11 +67,11 @@ bool
 thread_init(void) {
 	fassert(l_threads == NULL);
 
-	logline(log_DEBUG_, "...");
+	log_dbg( "...");
 
 	l_threads = mcalloc(sizeof *l_threads, "l_threads");
 	if (!l_threads) {
-		logline(log_ERR_, "Could not add main thread!?");
+		log_err( "Could not add main thread!?");
 		return (false);
 	}
 
@@ -84,7 +84,7 @@ thread_init(void) {
 	list_init(l_threads);
 
 	if (!thread_add("Main", NULL, NULL)) {
-		logline(log_ERR_, "Could not add main thread!?");
+		log_err( "Could not add main thread!?");
 		return (false);
 	}
 
@@ -154,7 +154,7 @@ thread_remove(mythread_t *t) {
 
 	fassert(t);
 
-	logline(log_DEBUG_, "Thread %s started", t->description);
+	log_dbg( "Thread %s started", t->description);
 
 	list_remove_l(l_threads, &t->node);
 }
@@ -164,7 +164,7 @@ thread_destroy(mythread_t *t);
 static void
 thread_destroy(mythread_t *t) {
 
-	logline(log_DEBUG_,
+	log_dbg(
 		"Destroying: " THREAD_ID
 		" \"%s\" [%s]",
 		t->thread_id,
@@ -257,7 +257,7 @@ thread_sleep(unsigned int msec) {
 
 #ifdef DEBUG
 	if (rc != ETIMEDOUT && rc != 0) {
-		logline(log_ERR_,
+		log_err(
 			"cond_timedwait(tr%" PRIu64 ", %u) on "
 			"%s returned %u",
 			t->thread_id,
@@ -281,7 +281,7 @@ thread_start(mythread_t *t) {
 	/* Note the time it started */
 	t->starttime = gettime();
 
-	logline(log_DEBUG_,
+	log_dbg(
 		"Thread %s started%s", t->description,
 		t->start_routine ? "" : " (" STR(PROJECT_BUILDTIME) ")");
 
@@ -310,7 +310,7 @@ thread_autoremove(LPVOID arg) {
 	sigfillset(&mask);
 	rc = pthread_sigmask(SIG_BLOCK, &mask, NULL);
 	if (rc != 0)
-		logline(log_ERR_, "pthread_sigmask() returned %d", rc);
+		log_err( "pthread_sigmask() returned %d", rc);
 #endif
 
 	/* Startup */
@@ -336,12 +336,12 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 	static unsigned int	thread_num = 0;
 	mythread_t		*t;
 
-	logline(log_DEBUG_, "\"%s\"", description);
+	log_dbg( "\"%s\"", description);
 
 	/* Allocate a new thread structure */
 	t = (mythread_t *)mcalloc(sizeof *t, "thread");
 	if (!t) {
-		logline(log_ERR_,
+		log_err(
 			"[%s] Couldn't allocate memory for a new thread... "
 			"aborting", description);
 		return (false);
@@ -365,7 +365,7 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 					      NULL, 0, NULL)))
 #endif
 		{
-			logline(log_ERR_,
+			log_err(
 				"[%s] Couldn't create thread... aborting",
 				description);
 
@@ -394,7 +394,7 @@ thread_stopall(bool force) {
 	mythread_t	*t, *tn;
 	os_thread_id	tid = getthisthreadid();
 
-	logline(log_DEBUG_, "Signalling threads that they should exit");
+	log_dbg( "Signalling threads that they should exit");
 
 	/* Must be initialized */
 	fassert(l_threads != NULL);
@@ -429,7 +429,7 @@ thread_stopall(bool force) {
 					continue;
 
 				thread_lock(t);
-				logline(log_DEBUG_,
+				log_dbg(
 					"Still waiting for " THREAD_ID
 					" \"%s\" [%s]%s to finish...",
 					t->thread_id,
@@ -448,7 +448,7 @@ thread_stopall(bool force) {
 		}
 
 		if (!done) {
-			logline(log_DEBUG_,
+			log_dbg(
 				"Threads Exiting - "
 				"waiting for some threads (try %u/%u)",
 				i+1, max);
@@ -460,12 +460,12 @@ thread_stopall(bool force) {
 
 	/* Force cleanup */
 	if (force && !list_isempty(l_threads)) {
-		logline(log_DEBUG_, "Forcing Thread Exit");
+		log_dbg( "Forcing Thread Exit");
 
 		while ((t = (mythread_t *)list_pop(l_threads))) {
 			if (t->thread_id != tid) {
 				thread_lock(t);
-				logline(log_DEBUG_,
+				log_dbg(
 					" Was still running: " THREAD_ID
 					" \"%s\" [%s]",
 					t->thread_id,
@@ -485,12 +485,12 @@ thread_stopall(bool force) {
 		}
 	}
 
-	logline(log_DEBUG_, "done");
+	log_dbg( "done");
 }
 
 void
 thread_exit(void) {
-	logline(log_DEBUG_, "...");
+	log_dbg( "...");
 
 	fassert(l_threads != NULL);
 
@@ -499,7 +499,7 @@ thread_exit(void) {
 
 	fassert(list_isempty(l_threads));
 
-	logline(log_INFO_, "Shutting down");
+	log_inf( "Shutting down");
 
 	list_destroy(l_threads);
 	mfree(l_threads, sizeof *l_threads, "l_threads");
@@ -510,7 +510,7 @@ thread_exit(void) {
 		l_pidfile = NULL;
 	}
 
-	logline(log_DEBUG_, "done");
+	log_dbg( "done");
 
 	mutex_destroy(l_tmutex);
 }
@@ -574,7 +574,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 
 void
 thread_stop_running(void) {
-	logline(log_DEBUG_, "Stop running...");
+	log_dbg( "Stop running...");
 
 	mutex_lock(l_tmutex);
 	l_keep_running = false;
@@ -619,7 +619,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 			uid = pw->pw_uid;
 			gid = pw->pw_gid;
 		} else {
-			logline(log_ERR_, "No such user '%s'", username);
+			log_err( "No such user '%s'", username);
 			return (-1);
 		}
 	}
@@ -631,13 +631,13 @@ thread_daemonize(const char *pidfile, const char *username) {
 	}
 
 	if (cnt > 1) {
-		logline(log_CRIT_, "Other threads already running");
+		log_crt( "Other threads already running");
 		list_unlock(l_threads);
 		return (-1);
 	}
 
 	if (cnt == 0) {
-		logline(log_CRIT_, "No threads found at all?");
+		log_crt( "No threads found at all?");
 		list_unlock(l_threads);
 		return (-1);
 	}
@@ -647,13 +647,13 @@ thread_daemonize(const char *pidfile, const char *username) {
 	assert(t != NULL);
 
 	if (t == NULL) {
-		logline(log_CRIT_, "Did the thread leave?");
+		log_crt( "Did the thread leave?");
 		list_unlock(l_threads);
 		return (-1);
 	}
 
 	if (t->thread_id != tid) {
-		logline(log_CRIT_, "Thread was not me?");
+		log_crt( "Thread was not me?");
 		list_unlock(l_threads);
 		return (-1);
 	}
@@ -666,7 +666,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 	/* Daemonize */
 	pid = fork();
 	if (pid < 0) {
-		logline(log_CRIT_, "Couldn't fork");
+		log_crt( "Couldn't fork");
 		return (-1);
 	}
 
@@ -681,14 +681,14 @@ thread_daemonize(const char *pidfile, const char *username) {
 
 	/* Add ourselves again, but now under new PID */
 	if (!thread_add("DaemonMain", NULL, NULL)) {
-		logline(log_ERR_, "Could not add daemon main thread!?");
+		log_err( "Could not add daemon main thread!?");
 		return (false);
 	}
 
 	/* Chdir to root so we don't keep any dir busy */
 	ret = chdir("/");
 	if (ret != 0) {
-		logline(log_ERR_, "Could not change dir to /");
+		log_err( "Could not change dir to /");
 		return (-1);
 	}
 
@@ -703,7 +703,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 		f = fopen(pidfile, "w");
 		if (!f)
 		{
-			logline(log_ERR_,
+			log_err(
 				 "Could not store PID in file %s",
 				pidfile);
 			return (-1);
@@ -713,7 +713,7 @@ thread_daemonize(const char *pidfile, const char *username) {
 		if (username != NULL) {
 			ret = fchown(fileno(f), uid, gid);
 			if (ret != 0) {
-				logline(log_ERR_,
+				log_err(
 					 "Could not rename PID file");
 			}
 		}
@@ -733,14 +733,14 @@ thread_daemonize(const char *pidfile, const char *username) {
 #if defined(_LINUX) || defined(_FREEBSD)
 		/* This makes sure there is no way back */
 		if (setresgid(gid, gid, gid) < 0) {
-			logline(log_ERR_,
+			log_err(
 				"setresgid(group of %s) failed",
 				username);
 			return (-1);
 		}
 
 		if (setresuid(uid, uid, uid) < 0) {
-			logline(log_ERR_,
+			log_err(
 				"setresuid(%s) failed",
 				username);
 			return (-1);
@@ -754,10 +754,10 @@ thread_daemonize(const char *pidfile, const char *username) {
 	uid = getuid();
 	gid = getgid();
 
-	logline(log_INFO_, "Running as PID %d (user %u:%u)", pid, uid, gid);
+	log_inf( "Running as PID %d (user %u:%u)", pid, uid, gid);
 
 #else
-	logline(log_NOTICE_, "Can't daemonize or suid on Windows");
+	log_ntc( "Can't daemonize or suid on Windows");
 	pidfile = pidfile;
 	username = username;
 #endif
