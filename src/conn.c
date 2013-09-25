@@ -66,12 +66,14 @@ connset_trigger_clear(connset_t *cs, fd_set *fd_r) {
 	char buf;
 
 	/* Reset the trigger count */
-	if (cs->triggers == 0)
+	if (cs->triggers == 0) {
 		return;
+	}
 
 	/* No need to read when the bit is not set */
-	if (!FD_ISSET(cs->pipe[0], fd_r))
+	if (!FD_ISSET(cs->pipe[0], fd_r)) {
 		return;
+	}
 
 	/* Reset the count */
 	cs->triggers = 0;
@@ -211,15 +213,14 @@ connset_poll_list(const char *type, hlist_t *l, fd_set *fd_r, fd_set *fd_w) {
 	list_for(l, conn, conn_next, conn_t *) {
 		logline(log_DEBUG_,
 			"  %s: " CONN_ID " " SOCK_ID
-			", (i:%s/%s o:%s/%s) out: %" PRIu64,
+			", (i:%s/%s o:%s/%s)",
 			type,
 			conn_id(conn),
 			conn_sock(conn),
 			yesno(conn_wnt_in(conn)),
 			yesno(FD_ISSET(conn->sock, fd_r)),
 			yesno(conn_wnt_out(conn)),
-			yesno(FD_ISSET(conn->sock, fd_w)),
-			conn_flushleft(conn));
+			yesno(FD_ISSET(conn->sock, fd_w)));
 	}
 	list_unlock(l);
 }
@@ -233,6 +234,7 @@ connset_poll(connset_t *cs) {
 	int		i, errsv, hifd;
 #ifdef POLLDEBUG
 	int		j;
+	uint64_t	a_s, a_ms, b_s, b_ms, d;
 #endif
 
 	while (true) {
@@ -259,7 +261,6 @@ connset_poll(connset_t *cs) {
 		connset_poll_list("ina", &cs->inactive, &fd_r, &fd_w);
 		connset_poll_list("hdl", &cs->handling, &fd_r, &fd_w);
 #endif
-
 		connset_unlock(cs);
 
 		/*
@@ -271,15 +272,31 @@ connset_poll(connset_t *cs) {
 
 		thread_setstate(thread_state_select);
 		errno = 0;
-		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
- 		errsv = errno;
-		thread_setstate(thread_state_running);
 
 #ifdef POLLDEBUG
-		logline(log_DEBUG_,
-			"i = %d/%u, errno = %d",
-			i, hifd, errsv);
+		a_s = gettimes(&a_ms);
 #endif
+		i = select(hifd, &fd_r, &fd_w, NULL, &timeout);
+ 		errsv = errno;
+
+#ifdef POLLDEBUG
+		b_s = gettimes(&b_ms);
+
+		if (a_ms > b_ms)
+		{
+			b_s--;
+			d = a_ms - b_ms;
+		}
+		else
+		{
+			d = b_ms - a_ms;
+		}
+
+		connset_lock(cs);
+		logline(log_DEBUG_, "select() = %u (sec = %" PRIu64 ".%03" PRIu64 ", triggers = %" PRIu64 ")", i, b_s - a_s, d, cs->triggers);
+		connset_unlock(cs);
+#endif
+		thread_setstate(thread_state_running);
 
 		if (i < 0) {
 			/* Ignore signals */
@@ -306,10 +323,6 @@ connset_poll(connset_t *cs) {
 			break;
 		}
 
-#ifdef POLLDEBUG
-		/* How many did we find active? */
-		j = 0;
-#endif
 		/* Lock the connset first */
 		connset_lock(cs);
 
@@ -398,22 +411,6 @@ connset_poll(connset_t *cs) {
 			}
 		}
 
-
-#ifdef POLLDEBUG
-		if (i != j) {
-			logline(log_DEBUG_, "Got response for %u/%u socks, but only had %u", i, hifd, j);
-
-			for (i = 0; i < hifd; i++) {
-				if (FD_ISSET(i, &fd_r))
-					logline(log_DEBUG_, "   read: " SOCK_ID, i);
-				if (FD_ISSET(i, &fd_w))
-					logline(log_DEBUG_, "   write: " SOCK_ID, i);
-			}
-
-			logline(log_DEBUG_, "----------------");
-			fassert(false);
-		}
-#endif
 		list_unlock(&cs->active);
 
 		connset_unlock(cs);
@@ -1320,6 +1317,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 #endif
 	}
 
+	/* Release her */
 	connset_unlock(conn->connset);
 }
 
@@ -1506,7 +1504,8 @@ connset_get_one_ready(connset_t *cs) {
 /* Paired with a connset_get_{one_}ready and thus connset_handling_setup() */
 void
 connset_handling_done(conn_t *conn, bool keeplocked) {
-	hlist_t			*l;
+	hlist_t	*l;
+	bool	changed = false;
 
 	/* Has to be one some list */
 	fassert(conn->connset_l != NULL);
@@ -1529,10 +1528,12 @@ connset_handling_done(conn_t *conn, bool keeplocked) {
 		/* Set the bits correctly so that select() answers again */
 		if (conn->wntevents & CONN_POLLIN) {
 			FD_SET(conn->sock, &conn->connset->fd_read);
+			changed = true;
 		}
 
 		if (conn->wntevents & CONN_POLLOUT) {
 			FD_SET(conn->sock, &conn->connset->fd_write);
+			changed = true;
 		}
 
 		/* Place it back on the active/inactive list */
@@ -1562,6 +1563,11 @@ connset_handling_done(conn_t *conn, bool keeplocked) {
 		conn->posthandle_f(conn, conn->posthandle_u);
 		conn->posthandle_f = NULL;
 		conn->posthandle_u = NULL;
+	}
+
+	/* Trigger as select() needs to know about our changes */
+	if (changed) {
+		connset_trigger_set(conn->connset);
 	}
 
 	/* Release it */
@@ -2244,7 +2250,6 @@ conn_flushleft(conn_t *conn) {
 	buf_unlock(&conn->send_headers);
 	buf_unlock(&conn->send);
 	conn_unlock(conn);
-
 	return (l);
 }
 
@@ -2451,6 +2456,9 @@ conn_flush(conn_t *conn) {
 
 	/* Nothing to flush */
 	if (len == 0) {
+		buf_unlock(&conn->send_headers);
+		buf_unlock(&conn->send);
+
 		/* Need to send more of a file? */
 		if (conn->sendfile_len != 0) {
 			ret = conn_flush_sendfile(conn);
@@ -2461,8 +2469,6 @@ conn_flush(conn_t *conn) {
 			conn_eventsA(conn, CONN_POLLIN);
 		}
 
-		buf_unlock(&conn->send_headers);
-		buf_unlock(&conn->send);
 		conn_unlock(conn);
 		return (ret);
 	}
