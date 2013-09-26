@@ -832,9 +832,14 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 					10 :
 					(line[j+2] - '0'));
 
-			/* skip over the two hex digits */
-			/* The for skips over the % */
-			j += 2;
+			/* Skip over the '%' */
+			j++;
+
+			/* Copy over the unmangled variant */
+			hcl->headers.rawuri[ro++] = line[j++];
+			hcl->headers.rawuri[ro++] = line[j];
+
+			/* The for() while do the j++ for this char */
 		}
 
 		if (!isarg)
