@@ -67,7 +67,7 @@ rwl_lockW(rwl_t *l) {
 	l->writers++;
 
 	/* Try to get the write lock */
-	if (mutex_trylock(l->mutexW) == 0)
+	if (mutex_trylock(l->mutexW))
 		w = true;
 
 	/* Is something reading? */
@@ -92,7 +92,7 @@ rwl_lockW(rwl_t *l) {
 		mutex_lock(l->mutex);
 
 		/* Try to get the write lock */
-		if (mutex_trylock(l->mutexW) == 0)
+		if (mutex_trylock(l->mutexW))
 			w = true;
 	}
 

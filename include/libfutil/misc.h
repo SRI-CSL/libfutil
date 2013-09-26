@@ -67,7 +67,7 @@ typedef pthread_cond_t		cond_t;
 				}
 #define mutex_destroy(m)	pthread_mutex_destroy(&(m))
 #define mutex_lock(m)		pthread_mutex_lock(&(m))
-#define mutex_trylock(m)	pthread_mutex_trylock(&(m))
+#define mutex_trylock(m)	(pthread_mutex_trylock(&(m)) == 0 ? true : false)
 #define mutex_unlock(m)		pthread_mutex_unlock(&(m))
 #define cond_init(c)		pthread_cond_init(&(c), NULL)
 #define cond_destroy(c)		pthread_cond_destroy(&(c))
