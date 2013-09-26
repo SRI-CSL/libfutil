@@ -1,8 +1,11 @@
 #include <libfutil/misc.h>
 
 /* Toggle to 1 to get debug output */
-#if 0
-#if 1
+#ifdef DEBUG
+#undef LD_HIDE
+#define LC(x) x
+#if 0 /* LD in our out */
+#if 1 /* destination: log or stderr */
 #define LD(t,a) log_dbg( t, a)
 #define LD2(t,a,b) log_dbg( t, a, b)
 #define LD3(t,a,b,c) log_dbg( t, a, b, c)
@@ -10,18 +13,33 @@
 #define LD(t,a) fprintf(stderr, "%s: " t "\n", __func__ a)
 #define LD2(t,a,b) fprintf(stderr, "%s: " t "\n", __func__ a, b)
 #define LD3(t,a,b,c) fprintf(stderr, "%s: " t "\n", __func__ a, b, c)
-#endif
+#endif /* destination */
 #else
-#define LD(t,a) {}
-#define LD2(t,a,b) {}
-#define LD3(t,a,b,c) {}
-#endif
+#define LD_HIDE
+#endif /* LD in or out */
 
 /* Toggle to 1 to get precise list_lock/unlock details */
 #if 0
+#undef LDV_HIDE
 #define LDV(t,a) LD(t,a)
 #else
-#define LDV(t,a) {}
+#define LDV_HIDE
+#endif /* list_lock details */
+
+#else
+#define LD_HIDE
+#define LDV_HIDE
+#define LC(x)
+#endif /* DEBUG */
+
+#ifdef LD_HIDE
+#define LD(t,a)
+#define LD2(t,a,b)
+#define LD3(t,a,b,c)
+#endif
+
+#ifdef LDV_HIDE
+#define LDV(t,a)
 #endif
 
 /* Is the list empty? */
@@ -50,11 +68,11 @@ list_isempty(hlist_t *l) {
 /* Create a new list */
 void
 list_init(hlist_t *l) {
-	static uint64_t l_id = 0;
+	LC(static uint64_t l_id = 0);
 
-	l->id = ++l_id;
+	LC(l->id = ++l_id);
 
-	LD2("%p - " LIST_ID, (void *)l, list_id(l));
+	LC(LD2("%p - " LIST_ID, (void *)l, list_id(l)));
 
 	l->tailprev	= (hnode_t *)&l->head;
 	l->tail		= NULL;
@@ -91,7 +109,7 @@ node_destroy(hnode_t *n) {
 /* List is locked by caller */
 void
 list_remove(hlist_t *l, hnode_t *n) {
-	fassert(l->locks == 1);
+	LC(fassert(l->locks == 1));
 
 	LD3(LIST_ID ", %p, %" PRIu64, list_id(l), (void *)n, l->items);
 
@@ -106,13 +124,13 @@ list_remove(hlist_t *l, hnode_t *n) {
 	n->next	= NULL;
 	n->prev	= NULL;
 
-	fassert(l->items > 0);
-	l->items--;
+	LC(fassert(l->items > 0));
+	LC(l->items--);
 
 	/* Signal at least one wanting to know that something got removed */
 	cond_trigger(l->cond);
 
-	fassert(l->locks == 1);
+	LC(fassert(l->locks == 1));
 }
 
 void
@@ -178,11 +196,11 @@ list_getnext(hlist_t *l) {
 		 * cond_wait() unlocks the mutex temporarily
 		 * this allows multiple threads to wait for the condition
 		 */
-		l->locks--;
+		LC(l->locks--);
 
 		if (!cond_wait(l->cond, l->mutex, 5000)) {
 			/* We got the lock again */
-			l->locks++;
+			LC(l->locks++);
 
 			/* Try getting one from the list */
 			LD(LIST_ID " [d] more", list_id(l));
@@ -190,7 +208,7 @@ list_getnext(hlist_t *l) {
 		}
 
 		/* Timeout locks the mutex */
-		l->locks++;
+		LC(l->locks++);
 		LD(LIST_ID " [e] timeout", list_id(l));
 	}
 
@@ -222,7 +240,7 @@ list_addtail(hlist_t *l, hnode_t *n) {
 	n->prev = o;
 	o->next = n;
 
-	l->items++;
+	LC(l->items++);
 
 	/* Signal at least one wanting to know that something got added */
 	cond_trigger(l->cond);
@@ -239,15 +257,15 @@ void
 list_lock(hlist_t *l) {
 	mutex_lock(l->mutex);
 	LDV(LIST_ID, list_id(l));
-	fassert(l->locks == 0);
-	l->locks++;
+	LC(fassert(l->locks == 0));
+	LC(l->locks++);
 }
 
 void
 list_unlock(hlist_t *l) {
 	LDV(LIST_ID, list_id(l));
-	fassert(l->locks == 1);
-	l->locks--;
+	LC(fassert(l->locks == 1));
+	LC(l->locks--);
 	mutex_unlock(l->mutex);
 }
 

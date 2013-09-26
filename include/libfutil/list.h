@@ -19,9 +19,12 @@ struct hlist_t
 					   of the list */
 	mutex_t		mutex;		/* Mutex */
 	cond_t		cond;		/* Condition */
+
+#ifdef DEBUG
 	uint64_t	locks;		/* Number of locks */
 	uint64_t	id;		/* List ID */
 	uint64_t	items;		/* Items */
+#endif
 };
 
 bool list_isempty(hlist_t *l);
@@ -39,8 +42,10 @@ void list_remove_l(hlist_t *l, hnode_t *n);
 void list_lock(hlist_t *l);
 void list_unlock(hlist_t *l);
 
+#ifdef DEBUG
 #define list_id(l) ((l) ? (l)->id : 0)
 #define LIST_ID "[l%" PRIu64 "]"
+#endif
 
 void node_init(hnode_t *n);
 void node_destroy(hnode_t *n);
