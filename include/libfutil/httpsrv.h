@@ -65,6 +65,7 @@ typedef void (*httpsrv_bfwd_f)(httpsrv_client_t *hcl, httpsrv_client_t *fhcl, vo
 /* All private */
 typedef struct {
 	uint64_t		id;		/* Identifier for debugging */
+	mutex_t			mutex;		/* Lock */
 	connset_t		connset;	/* Connections */
 	hlist_t			sessions;	/* Sessions */
 
@@ -72,28 +73,28 @@ typedef struct {
 	/* User data */
 	void			*user;
 
-	/* HTML Top function - called to generate the top of a HTML page */
+	/* HTML Top function	- called to generate the top of a HTML page */
 	httpsrv_f		top;
 
-	/* HTML Top function - called to generate the tail of a HTML page */
+	/* HTML Top function	- called to generate the tail of a HTML page */
 	httpsrv_f		tail;
 
-	/* Accept function - called when connection is accepted */
+	/* Accept function	- called when connection is accepted */
 	httpsrv_f		accept;
 
-	/* Header function - called for every header */
+	/* Header function	- called for every header */
 	httpsrv_line_f		header;
 
-	/* Handle function - called when request is complete */
+	/* Handle function	- called when request is complete */
 	httpsrv_done_f		handle;
 
-	/* BodyFWDdone     - called when BodyFwd is complete */
+	/* BodyFWDdone		- called when BodyFwd is complete */
 	httpsrv_bfwd_f		bodyfwd_done;
 
-	/* Done function   - called when request is done */
+	/* Done function	- called when request is done */
 	httpsrv_f		done;
 
-	/* Close function  - called when closing connection */
+	/* Close function	- called when closing connection */
 	httpsrv_f		close;
 } httpsrv_t;
 
@@ -145,6 +146,7 @@ bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsig
 void httpsrv_exit(httpsrv_t *hs);
 
 httpsrv_client_t *httpsrv_newcl(httpsrv_t *hs);
+void httpsrv_client_destroy(httpsrv_client_t *hcl);
 
 void httpsrv_done(httpsrv_client_t *hcl);
 void httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a);
@@ -153,6 +155,7 @@ const char *httpsrv_methodname(unsigned int method);
 void httpsrv_close(httpsrv_client_t *hcl);
 
 void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
+void *httpsrv_get_userdata(httpsrv_client_t *hcl);
 void httpsrv_set_posthandle(httpsrv_client_t *hcl, httpsrv_sf f);
 
 bool httpsrv_parse_request(httpsrv_client_t *hcl);

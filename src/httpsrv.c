@@ -56,6 +56,11 @@ httpsrv_set_userdata(httpsrv_client_t *hcl, void *user) {
 	hcl->user = user;
 }
 
+void *
+httpsrv_get_userdata(httpsrv_client_t *hcl) {
+	return (hcl->user);
+}
+
 void
 httpsrv_set_posthandle_hook(conn_t UNUSED *conn, void *user);
 void
@@ -79,6 +84,17 @@ httpsrv_close(httpsrv_client_t *hcl) {
 	hcl->close = true;
 }
 
+void
+httpsrv_client_destroy(httpsrv_client_t *hcl) {
+	/* Destroy the connection */
+	conn_destroy(&hcl->conn);
+
+	/* Cleanup the headers */
+	buf_destroy(&hcl->the_headers);
+
+	mfree(hcl, sizeof *hcl, "httpsrv_client_t");
+}
+
 bool
 httpsrv_client_close(httpsrv_client_t *hcl, bool force);
 bool
@@ -99,17 +115,13 @@ httpsrv_client_close(httpsrv_client_t *hcl, bool force) {
 			return (false);
 		}
 
-		/* All done, destroy it */
-		conn_destroy(&hcl->conn);
 	}
 
 	if (hcl->hs->close)
 		hcl->hs->close(hcl, hcl->user);
 
-	/* Cleanup the headers */
-	buf_destroy(&hcl->the_headers);
-
-	mfree(hcl, sizeof *hcl, "httpsrv_client_t");
+	/* Destroy it */
+	httpsrv_client_destroy(hcl);
 	return (true);
 }
 
@@ -1009,12 +1021,15 @@ httpsrv_newcl(httpsrv_t *hs) {
 	httpsrv_client_t	*hcl;
 	bool			r;
 
+	mutex_lock(hs->mutex);
+
 	log_dbg( "[hs%" PRIu64 "]", hs->id);
 
 	/* Create a cl session */
 	hcl = mcalloc(sizeof *hcl, "httpsrv_client_t");
 	if (hcl == NULL) {
 		log_crt( "[hs%" PRIu64 "] alloc failed", hs->id);
+		mutex_unlock(hs->mutex);
 		return (NULL);
 	}
 
@@ -1039,6 +1054,7 @@ httpsrv_newcl(httpsrv_t *hs) {
 			log_err( "Could not close new HCL (conn)");
 		}
 
+		mutex_unlock(hs->mutex);
 		return (NULL);
 	}
 
@@ -1053,8 +1069,11 @@ httpsrv_newcl(httpsrv_t *hs) {
 			log_err( "Could not close new HCL (buf)");
 		}
 
+		mutex_unlock(hs->mutex);
 		return (NULL);
 	}
+
+	mutex_unlock(hs->mutex);
 
 	return (hcl);
 }
@@ -1512,6 +1531,9 @@ httpsrv_exit(httpsrv_t *hs) {
 	/* Cleanup all remaining connections */
 	connset_destroy(&hs->connset);
 
+	/* Destroy it */
+	mutex_destroy(hs->mutex);
+
 	/* Empty her */
 	memzero(hs, sizeof *hs);
 
@@ -1539,6 +1561,9 @@ httpsrv_init(	httpsrv_t *hs,
 	/* New Id */
 	hs->id = ++httpsrv_id;
 	log_dbg( "[hs%" PRIu64 "]", hs->id);
+
+	/* The lock */
+	mutex_init(hs->mutex);
 
 	/* Initialize the connections list */
 	if (!connset_init(&hs->connset)) {
