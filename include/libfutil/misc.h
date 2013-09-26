@@ -65,12 +65,14 @@ typedef pthread_cond_t		cond_t;
 				pthread_mutex_init(&m, &attr);		\
 				pthread_mutexattr_destroy(&attr);	\
 				}
-#define mutex_destroy(m)	pthread_mutex_destroy(&m)
-#define mutex_lock(m)		pthread_mutex_lock(&m)
-#define mutex_trylock(m)	pthread_mutex_trylock(&m)
-#define mutex_unlock(m)		pthread_mutex_unlock(&m)
-#define cond_init(c)		pthread_cond_init(&(c), NULL);
-#define cond_destroy(c)		pthread_cond_destroy(&(c));
+#define mutex_destroy(m)	pthread_mutex_destroy(&(m))
+#define mutex_lock(m)		pthread_mutex_lock(&(m))
+#define mutex_trylock(m)	pthread_mutex_trylock(&(m))
+#define mutex_unlock(m)		pthread_mutex_unlock(&(m))
+#define cond_init(c)		pthread_cond_init(&(c), NULL)
+#define cond_destroy(c)		pthread_cond_destroy(&(c))
+#define cond_trigger(c)		pthread_cond_broadcast(&(c))
+#define cond_wait(c,m,msec)	cond_wait_(&c, &m, msec)
 
 #else
 /* Windows */
@@ -105,8 +107,10 @@ typedef HANDLE			cond_t;
 #define mutex_lock(m)		WaitForSingleObject(m, INFINITE)
 #define mutex_trylock(m)	(WaitForSingleObject(m, 0) != WAIT_ABANDONED)
 #define mutex_unlock(m)		ReleaseMutex(m)
-#define cond_init(c)		{ c = NULL; /* NI */ }
-#define cond_destroy(c)		{ c = NULL; /* NI */ }
+#define cond_init(c)		{ NOT IMPLEMENTED }
+#define cond_destroy(c)		{ NOT IMPLEMENTED }
+#define cond_trigger(c)		{ NOT IMPLEMENTED }
+#define cond_wait(c,m,msec)	cond_wait_(&c, &m, msec)
 
 #define FIOBIO			FIONBIO
 #define SHUT_RD			SD_RECEIVE
@@ -127,6 +131,8 @@ typedef HANDLE			cond_t;
 #endif
 
 #endif /* _WIN32 */
+
+bool cond_wait_(cond_t *c, mutex_t *m, unsigned int msec);
 
 #ifdef __MACH__
 #include <mach/clock.h>

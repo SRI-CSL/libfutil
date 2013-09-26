@@ -228,10 +228,7 @@ thread_serve(void) {
 bool
 thread_sleep(unsigned int msec) {
 	mythread_t	*t;
-#ifndef _WIN32
-	struct timespec	timeout;
-#endif
-	int		rc;
+	bool		ret;
 
 	t = thread_getthis();
 
@@ -242,33 +239,13 @@ thread_sleep(unsigned int msec) {
 	}
 
 	t->state = thread_state_sleeping;
-#ifndef _WIN32
-	set_timeout(&timeout, msec);
-	rc = pthread_cond_timedwait(&t->cond, &t->mutex, &timeout);
-#else
-	/* XXX: Add support for conditional breaking (win32) */
-	Sleep(msec);
-	rc = ETIMEDOUT;
-#endif
+	ret = cond_wait(t->cond, t->mutex, msec);
 	t->state = thread_state_running;
 
 	/* Unlock the thread */
 	thread_unlock(t);
 
-#ifdef DEBUG
-	if (rc != ETIMEDOUT && rc != 0) {
-		log_err(
-			"cond_timedwait(tr%" PRIu64 ", %u) on "
-			"%s returned %u",
-			t->thread_id,
-			msec,
-			t->description ? t->description : "<no description>",
-			rc);
-	}
-#endif
-	fassert(rc != EINVAL);
-
-	return (rc == ETIMEDOUT ? true : false);
+	return (ret);
 }
 
 static void

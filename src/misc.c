@@ -515,6 +515,33 @@ set_timeout(struct timespec *timeout, unsigned int msec) {
 #endif
 
 bool
+cond_wait_(cond_t *c, mutex_t *m, unsigned int msec) {
+#ifndef _WIN32
+	int		rc;
+	struct timespec	timeout;
+
+	set_timeout(&timeout, msec);
+
+	rc = pthread_cond_timedwait(c, m, &timeout);
+
+#ifdef DEBUG
+	/* Typically expected */
+	if (rc != ETIMEDOUT && rc != 0) {
+		log_err("cond_timedwait(%u) returned %u", msec, rc);
+	}
+#endif
+	fassert(rc != EINVAL);
+
+	return (rc == ETIMEDOUT ? true : false);
+#else
+#error "Add support for conditional breaking (win32)"
+	Sleep(msec);
+
+	return (true);
+#endif /* _WIN32 */
+}
+
+bool
 misc_map(const char *str, const misc_map_t *map, char *data) {
 	unsigned int	i = 0, l, len;
 	const char	*s;

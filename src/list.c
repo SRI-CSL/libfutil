@@ -109,12 +109,8 @@ list_remove(hlist_t *l, hnode_t *n) {
 	fassert(l->items > 0);
 	l->items--;
 
-#ifndef _WIN32
 	/* Signal at least one wanting to know that something got removed */
-	pthread_cond_broadcast(&l->cond);
-#else
-	/* XXX: Use Windows Events for broadcasting signals */
-#endif
+	cond_trigger(l->cond);
 
 	fassert(l->locks == 1);
 }
@@ -155,10 +151,6 @@ list_pop(hlist_t *l) {
 hnode_t *
 list_getnext(hlist_t *l) {
 	hnode_t		*node = NULL;
-#ifndef _WIN32
-	struct timespec	timeout;
-	int		rc;
-#endif
 
 	LD2(LIST_ID " %" PRIu64, list_id(l), l->items);
 
@@ -181,19 +173,14 @@ list_getnext(hlist_t *l) {
 
 		/* Nothing yet, thus wait for it */
 		LD(LIST_ID " [b] nothing yet", list_id(l));
-#ifndef _WIN32
-		set_timeout(&timeout, 5000);
 
 		/*
-		 * pthread_cond_timedwait() unlocks the mutex temporarily
+		 * cond_wait() unlocks the mutex temporarily
 		 * this allows multiple threads to wait for the condition
 		 */
 		l->locks--;
 
-		rc = pthread_cond_timedwait(&l->cond, &l->mutex, &timeout);
-		LD2(LIST_ID " [c] waited 5, rc = %d", list_id(l), rc);
-
-		if (rc == 0) {
+		if (!cond_wait(l->cond, l->mutex, 5000)) {
 			/* We got the lock again */
 			l->locks++;
 
@@ -202,22 +189,9 @@ list_getnext(hlist_t *l) {
 			continue;
 		}
 
-		/* Timeouts are normal */
-		if (rc == ETIMEDOUT) {
-			/* Timeout locks the mutex */
-			LD(LIST_ID " [e] timeout", list_id(l));
-			l->locks++;
-			continue;
-		}
-
-		/* Some kind of trouble thus get out */
-		log_err( "cond_timedwait returned %d", rc);
-		fassert(false);
-#else
-		/* XXX: Add support for conditional breaking (win32) */
-		Sleep(5000);
-#endif
-		break;
+		/* Timeout locks the mutex */
+		l->locks++;
+		LD(LIST_ID " [e] timeout", list_id(l));
 	}
 
 	list_unlock(l);
@@ -250,10 +224,8 @@ list_addtail(hlist_t *l, hnode_t *n) {
 
 	l->items++;
 
-#ifndef _WIN32
 	/* Signal at least one wanting to know that something got added */
-	pthread_cond_broadcast(&l->cond);
-#endif
+	cond_trigger(l->cond);
 }
 
 void
