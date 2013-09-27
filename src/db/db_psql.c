@@ -448,7 +448,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 		if (db->conn == NULL)
 			db_connect(db);
 		if (db->conn == NULL) {
-			logline(LOG_ALERT, caller, "No connection");
+			logline(LOG_ERR, caller, "No connection");
 			mutex_unlock(db->mutex);
 			return (DB_R_ERR);
 		}
