@@ -24,13 +24,8 @@ struct http_method {
 };
 
 typedef struct {
-	char		*var;
-	char		*val;
-} httpsrv_arg_t;
-
-typedef struct {
 	const char	*var;
-	char		**val;
+	const char	**val;
 } httpsrv_argl_t;
 
 typedef struct {
@@ -41,18 +36,18 @@ typedef struct {
 	char		local_port_s[8];
 	uint32_t	local_port;
 	char		hostname[256];
+
 	char		rawuri[8192];
 	char		uri[8192];
+
 	char		args[4096];
+	char		argsplit[4096];
+
 	char		cookie[4096];
 	char		content_type[256];
 	char		content_length_s[32];
 	uint64_t	content_length;
 
-	/* Pre-split version of args */
-	unsigned int	argc;
-	char		argsplit[4096];
-	httpsrv_arg_t	argi[128];
 } httpsrv_headers_t;
 
 typedef struct httpsrv_client httpsrv_client_t;
@@ -149,7 +144,7 @@ httpsrv_client_t *httpsrv_newcl(httpsrv_t *hs);
 void httpsrv_client_destroy(httpsrv_client_t *hcl);
 
 void httpsrv_done(httpsrv_client_t *hcl);
-void httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a);
+unsigned int httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args);
 
 const char *httpsrv_methodname(unsigned int method);
 void httpsrv_close(httpsrv_client_t *hcl);
@@ -157,8 +152,6 @@ void httpsrv_close(httpsrv_client_t *hcl);
 void httpsrv_set_userdata(httpsrv_client_t *hcl, void *user);
 void *httpsrv_get_userdata(httpsrv_client_t *hcl);
 void httpsrv_set_posthandle(httpsrv_client_t *hcl, httpsrv_sf f);
-
-bool httpsrv_parse_request(httpsrv_client_t *hcl);
 
 void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 

@@ -705,9 +705,6 @@ httpsrv_done(httpsrv_client_t *hcl) {
 	/* Empty raw headers */
 	buf_emptyL(&hcl->the_headers);
 
-	/* No arguments yet either */
-	hcl->headers.argc = 0;
-
 	/* Reset */
 	hcl->close = false;
 	hcl->keephandling = false;
@@ -745,21 +742,107 @@ httpsrv_done(httpsrv_client_t *hcl) {
 		hcl->id, conn_id(&hcl->conn));
 }
 
-bool
-httpsrv_parse_request(httpsrv_client_t *hcl) {
-	unsigned int	j, ro = 0, ao = 0, uo = 0;
-	char		c, *s, *h;
-	const char	*line;
-	bool		isarg = false;
-	uint32_t	proto;
+static httpsrv_argl_t *
+httpsrv_arg_find(httpsrv_argl_t *args, const char *name);
+static httpsrv_argl_t *
+httpsrv_arg_find(httpsrv_argl_t *args, const char *name) {
+	unsigned int i;
 
-	/* Only parse it once */
-	if (hcl->headers.args[0] != '\0') {
-		log_dbg(
-			HCL_ID " " CONN_ID " Not parsing again",
-			hcl->id, conn_id(&hcl->conn));
-		return (true);
+	/* Sometimes they do not want our arguments */
+	if (args == NULL) {
+		return (NULL);
 	}
+
+	for (i=0; args[i].var != NULL; i++) {
+		/* Is it this one? */
+		if (strcasecmp(args[i].var, name) != 0)
+			continue;
+
+		/* Gotcha */
+		return (&args[i]);
+	}
+
+	return (NULL);
+}
+
+/* Need to do this in the middle and at the end */
+static void
+httpsrv_parse_requestA(	httpsrv_client_t *hcl, unsigned int *ao_,
+			httpsrv_argl_t *args, httpsrv_argl_t **arg_,
+			const char **var_, const char **val_,
+			unsigned int *argc_mine_);
+static void
+httpsrv_parse_requestA(	httpsrv_client_t *hcl, unsigned int *ao_,
+			httpsrv_argl_t *args, httpsrv_argl_t **arg_,
+			const char **var_, const char **val_,
+			unsigned int *argc_mine_)
+{
+	unsigned int	ao = *ao_;
+	httpsrv_argl_t	*arg = *arg_;
+	const char	*var = *var_;
+	const char	*val = *val_;
+	unsigned int	argc_mine = *argc_mine_;
+
+	/* A variable without value? */
+	if (val == NULL) {
+		assert(arg == NULL);
+
+		/* Lookup variable */
+		arg = httpsrv_arg_find(args, var);
+
+		/* Did we want it? */
+		if (arg != NULL) {
+			arg++;
+			/* Assign it itself */
+			*arg->val = arg->var;
+			argc_mine++;
+
+			/* Got it */
+			arg = NULL;
+		}
+
+		/* Next variable starts here */
+		var = &hcl->headers.argsplit[ao];
+
+	/* Did we want it */
+	} else if (arg != NULL) {
+		*arg->val = val;
+		argc_mine++;
+
+		/* No arg yet */
+		arg = NULL;
+
+		/* Next variable starts here */
+		var = &hcl->headers.argsplit[ao];
+
+		/* No value yet */
+		val = NULL;
+
+	} else {
+		/*
+		 * Nope, it was unwanted
+		 * var stays at same place
+		 * reset argsplit to beginning
+		 */
+		ao = var - hcl->headers.argsplit;
+		val = NULL;
+	}
+
+	/* Put the values back */
+	*ao_ = ao;
+	*arg_ = arg;
+	*var_ = var;
+	*val_ = val;
+	*argc_mine_ = argc_mine;
+}
+
+unsigned int
+httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
+	unsigned int	j, ro = 0, ao = 0, uo = 0, argc = 0, argc_mine = 0;
+	char		c, *s, *h;
+	const char	*line, *var = NULL, *val = NULL;
+	uint32_t	proto;
+	httpsrv_argl_t	*arg = NULL;
 
 	line = hcl->the_request;
 
@@ -767,26 +850,18 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		HCL_ID " " CONN_ID " scanning: %s",
 		hcl->id, conn_id(&hcl->conn), line);
 
-	fassert(sizeof hcl->headers.argsplit == sizeof hcl->headers.args);
-
-	/* Nothing found yet */
-	hcl->headers.argc = 0;
-	memzero(hcl->headers.argi, sizeof hcl->headers.argi);
-	hcl->headers.argi[0].var = hcl->headers.argsplit;
-
 	/* First skip over the method */
 	for (j = 0; line[j] != ' '; j++);
 
 	/* Skip over the space behind the method */
 	j++;
 
+	/* Parse the URI */
 	for (	;
-		ro < (sizeof hcl->headers.rawuri - 1) &&
-		uo < (sizeof hcl->headers.uri    - 1) &&
-		ao < (sizeof hcl->headers.args   - 1);
+		ro < (sizeof hcl->headers.rawuri   - 2) &&
+		uo < (sizeof hcl->headers.uri      - 2) &&
+		ao < (sizeof hcl->headers.argsplit - 2);
 		j++) {
-
-		fassert(hcl->headers.argc < lengthof(hcl->headers.argi));
 
 		c = line[j];
 
@@ -794,97 +869,119 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		hcl->headers.rawuri[ro++] = c;
 
 		if (c == ' ' || c == '\0') {
-			/* Was the last argument used at least a bit? */
-			if (strlen(
-				hcl->headers.argi[hcl->headers.argc].var) > 0)
-				hcl->headers.argc++;
-				if (hcl->headers.argc >=
-					lengthof(hcl->headers.argi)) {
-					log_ntc(
-						HCL_ID " " CONN_ID " Too many args",
-						hcl->id, conn_id(&hcl->conn));
-					httpsrv_error(hcl, 400, "Too many args");
-					return (false);
-				}
+			/* Done parsing the URI */
 			break;
-		} else if (c == '?') {
-			/* The rest is arguments */
-			isarg = true;
-			continue;
+
 		} else if (c == '%') {
 			/* Escaped */
 			if (!isxdigit(line[j+1]) || !isxdigit(line[j+2])) {
-				log_ntc(
+				log_wrn(
 					HCL_ID " " CONN_ID " Broken URL: %s",
 					hcl->id, conn_id(&hcl->conn), line);
-				httpsrv_error(hcl, 400, "Wrongly encoded URL");
-				return (false);
-			}
-
-			/* Unescape URL (eg %2f -> '/') */
-			c =  ((line[j+1] >= 'A') ?
-					((line[j+1] & 0xdf) - 'A') +
-					10 :
+				/* Don't decode, just copy it raw */
+			} else {
+				/* Unescape URL (eg %2f -> '/') */
+				c =  ((line[j+1] >= 'A') ?
+					((line[j+1] & 0xdf) - 'A') + 10 :
 					(line[j+1] - '0'));
-			c *= 16;
-			c += ((line[j+2] >= 'A') ?
-					((line[j+2] & 0xdf) - 'A') +
-					10 :
+				c *= 16;
+				c += ((line[j+2] >= 'A') ?
+					((line[j+2] & 0xdf) - 'A') + 10 :
 					(line[j+2] - '0'));
 
-			/* Skip over the '%' */
-			j++;
+				/* Skip over the '%' */
+				j++;
 
-			/* Copy over the unmangled variant */
-			hcl->headers.rawuri[ro++] = line[j++];
-			hcl->headers.rawuri[ro++] = line[j];
+				/* Copy over the unmangled variant */
+				hcl->headers.rawuri[ro++] = line[j++];
+				hcl->headers.rawuri[ro++] = line[j];
 
-			/* The for() while do the j++ for this char */
+				/* The for() while do the j++ for this char */
+			}
+
+		} else if (c == '?') {
+			if (argc == 0) {
+				/* Variable name starts here */
+				var = &hcl->headers.argsplit[ao];
+				fassert(val == NULL);
+
+				/* Next char in the URI */
+				continue;
+			}
+
+			log_ntc(
+				HCL_ID " " CONN_ID " "
+				"Question mark in middle of URI",
+				hcl->id, conn_id(&hcl->conn));
+				/* Assume it is part of var or val */
 		}
 
-		if (!isarg)
+		if (var == NULL) {
+			/* Not an argument yet, thus part of the URI */
 			hcl->headers.uri[uo++] = c;
-		else {
-			/* Next argument? */
-			if (c == '&') {
-				hcl->headers.argsplit[ao]
-					=  '\0';
-				hcl->headers.argc++;
-
-				if (hcl->headers.argc >=
-					lengthof(hcl->headers.argi)) {
-					log_ntc(
-						HCL_ID " " CONN_ID "Too many args",
-						hcl->id, conn_id(&hcl->conn));
-					httpsrv_error(hcl, 400, "Too many args");
-					return (false);
-				}
-
-				/* The variable starts here */
-				hcl->headers.argi[hcl->headers.argc].var
-					= &hcl->headers.argsplit[ao+1];
+		} else {
+			/* Do we even care to look at the arguments? */
+			if (args == NULL) {
+				/* No we do not */
 			}
+			/* Next argument? */
+			else if (c == '&') {
+				argc++;
 
+				/* Terminate the var or value */
+				hcl->headers.argsplit[ao++] = '\0';
+
+				/* Handle the change of variable */
+				httpsrv_parse_requestA(hcl, &ao, args,
+						       &arg, &var, &val,
+						       &argc_mine);
 			/* Value? */
-			else if (c == '=') {
-				/* Terminate it */
-				hcl->headers.argsplit[ao] = '\0';
+			} else if (c == '=') {
+				/* Terminate the variable name */
+				hcl->headers.argsplit[ao++] = '\0';
 
-				/* The value starts here */
-				hcl->headers.argi[hcl->headers.argc].val
-					= &hcl->headers.argsplit[ao+1];
+				/* Do we want it ? */
+				arg = httpsrv_arg_find(args, var);
+				if (arg != NULL) {
+					/* Yes, val starts here */
+					val = &hcl->headers.argsplit[ao];
+				} else {
+					/* No, ignore it */
+					val = NULL;
+				}
 			/* Data */
 			} else {
-				/* Just add it to the string */
-				hcl->headers.argsplit[ao] = c;
+				/* Add it to the string if we want it */
+				if ((val != NULL) ||
+				    (val == NULL && arg == NULL)) {
+					hcl->headers.argsplit[ao++] = c;
+				}
 			}
-
-			/* Next argchar */
-			hcl->headers.args[ao++] = c;
 		}
 	}
 
-	/* Just in case */
+	/* Where we parsing a variable and do we care? */
+	if (var != NULL && args != NULL) {
+		argc++;
+
+		/* We check -2 above thus should be okay */
+		if (ao < (sizeof hcl->headers.args - 1)) {
+			/* Terminate it */
+			hcl->headers.argsplit[ao] = '\0';
+		} else {
+			log_dbg("On the edge of argsplit");
+			hcl->headers.argsplit[ao-1] = '\0';
+		}
+
+		/* Handle the change of variable */
+		httpsrv_parse_requestA(hcl, &ao, args,
+				       &arg, &var, &val,
+				       &argc_mine);
+	}
+
+	/* XXX: should finish in HTTP/1.1, but are indifferent */
+
+	/* Just in case (check with -2 above)*/
 	assert(ro < (sizeof hcl->headers.rawuri - 1));
 	assert(uo < (sizeof hcl->headers.uri    - 1));
 	assert(ao < (sizeof hcl->headers.args   - 1));
@@ -963,60 +1060,16 @@ httpsrv_parse_request(httpsrv_client_t *hcl) {
 		hcl->headers.remote_ip, hcl->headers.remote_port);
 
 	log_dbg(
-		HCL_ID " " CONN_ID " Got %u arguments:",
-		hcl->id, conn_id(&hcl->conn), hcl->headers.argc);
-
-	for (j = 0; j < hcl->headers.argc; j++) {
-		log_dbg(
-			HCL_ID " " CONN_ID " Arg %u :: %s = %s",
-			hcl->id,
-			conn_id(&hcl->conn),
-			j,
-			hcl->headers.argi[j].var,
-			hcl->headers.argi[j].val);
-	}
-
-	log_dbg(
-		HCL_ID " " CONN_ID " args = %s",
-		hcl->id, conn_id(&hcl->conn), hcl->headers.args);
+		HCL_ID " " CONN_ID " Found %u arguments, %u useful for me",
+		hcl->id, conn_id(&hcl->conn), argc, argc_mine);
 
 	if (strlen(hcl->headers.hostname) == 0) {
 		httpsrv_error(hcl, 400, "Bad Request - missing or empty Host header");
 		return (false);
 	}
 
-	return (true);
-}
-
-void
-httpsrv_args(httpsrv_client_t *hcl, httpsrv_argl_t *a) {
-	unsigned int i, j;
-
-	/* Parse the request in case it was not done yet */
-	httpsrv_parse_request(hcl);
-
-	/* Lookup all the arguments */
-	for (i=0; a[i].var; i++) {
-
-		/* Skip optional arguments */
-		if (!a[i].val)
-			continue;
-
-		/* Per default there is no value */
-		*a[i].val = NULL;
-
-		/* Try to match it up */
-		for (j = 0; j < hcl->headers.argc; j++)
-		{
-			if (strcasecmp(hcl->headers.argi[j].var,
-				       a[i].var) != 0)
-				continue;
-
-			/* Found it */
-			*a[i].val = hcl->headers.argi[j].val;
-			break;
-		}
-	}
+	/* Note that '0' is good if no arguments where wanted */
+	return (argc_mine);
 }
 
 httpsrv_client_t *
