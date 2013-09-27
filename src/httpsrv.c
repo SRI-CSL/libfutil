@@ -418,7 +418,7 @@ httpsrv_handle_http_readbody(httpsrv_client_t *hcl) {
 	/* Complete? Call handle function */
 	if (hcl->readbody_len == 0) {
 		/* Process it */
-		fassert(hcl->hs->handle);
+		fassert(hcl->hs->handle != NULL);
 
 		log_dbg(
 			HCL_ID " handling body",
@@ -581,7 +581,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			hcl->reqid++;
 
 			/* Process it */
-			fassert(hcl->hs->handle);
+			fassert(hcl->hs->handle != NULL);
 
 			log_dbg(
 				HCL_ID " handling",

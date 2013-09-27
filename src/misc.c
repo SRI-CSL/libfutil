@@ -1496,22 +1496,44 @@ parse_iso8601_interval(const char *interval, uint64_t *start, uint64_t *end) {
 	return (n+m);
 }
 
+void
+steg_free(const char *steg, unsigned int steg_len, 
+	  const char *mime, unsigned int mime_len)
+{
+	if (steg != NULL) {
+		fassert(steg_len != 0);
+        	mfree(steg, steg_len, "steg");
+	}
+
+	if (mime != NULL) {
+		fassert(mime_len != 0);
+        	mfree(mime, mime_len, "steg");
+	}
+}
+
+static const char steg_mimetype[] = "application/octet-stream";
+
 bool
 steg_encode(const char *src, unsigned int srclen,
 	    char **dst, unsigned int *dstlen,
 	    char **mime, unsigned int *mimelen)
 {
-	const char	mimetype[] = "application/octet-stream";
 	char		*d, *m;
-	unsigned int	i, j, m_len = strlen(mimetype)+1;
+	unsigned int	i, j, m_len = sizeof(steg_mimetype);
 
 	/* XXX: we do a silly transform till we have StegoTorus stegs */
 
 	d = mcalloc(srclen, "steg_data");
 	m = mcalloc(m_len, "steg_mime");
+	if (d == NULL || m == NULL) {
+		log_crt("No memory for steg_encode");
+
+		steg_free(d, srclen, m, m_len);
+		return (false);
+	}
 
 	/* Our semi-fixed mimetype */
-	memcpy(m, mimetype, m_len);
+	memcpy(m, steg_mimetype, m_len);
 
 	/* Do the transform */
 	for (i = 0; i < srclen; i++) {
@@ -1532,14 +1554,22 @@ steg_encode(const char *src, unsigned int srclen,
 
 bool
 steg_decode(const char *src, unsigned int srclen,
+	    const char *mime,
 	    char **dst, unsigned int *dstlen)
 {
 	unsigned int	i, j;
 	char		*d;
 
-	/* XXX: reverse the silly thing till we have StegoTorus stegs */
+	if (strcasecmp(mime, steg_mimetype) != 0) {
+		log_err("Wrong mime: '%s'", mime);
+		return (false);
+	}
 
 	d = mcalloc(srclen, "steg");
+	if (d == NULL) {
+		log_crt("No memory for steg_decode");
+		return (false);
+	}
 
 	for (i = 0; i < srclen; i++) {
 		j = src[i];

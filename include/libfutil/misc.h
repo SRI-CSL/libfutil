@@ -370,10 +370,14 @@ int parse_iso8601_interval(const char *interval,
 			   uint64_t *start, uint64_t *end);
 
 bool steg_encode(const char *src, unsigned int srclen,
-		char **dst, unsigned int *dstlen,
-		char **mime, unsigned int *mimelen);
+		 char **dst, unsigned int *dstlen,
+		 char **mime, unsigned int *mimelen);
+
+void steg_free(const char *steg, unsigned int steg_len,
+	       const char *mime, unsigned int mime_len);
 
 bool steg_decode(const char *src, unsigned int srclen,
+		 const char *mime,
 		 char **dst, unsigned int *dstlen);
 
 #define yesno(q) (q ? "yes" : "no")
