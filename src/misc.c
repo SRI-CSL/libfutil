@@ -340,15 +340,19 @@ inet_ptonA(const char *src, ipaddress_t *dst) {
 	memzero(tmp, sizeof tmp);
 	for (i = 0; i < sizeof tmp && src[i] != '\0' && src[i] != '/'; i++)
 		tmp[i] = src[i];
+
 	if (i >= sizeof tmp) {
+		log_dbg("'%s' is too long", src);
 		errno = ENOSPC;
 		return (-1);
 	}
 
 	/* Parse the address */
 	ret = inet_pton(af, tmp, dst->a8);
-	if (ret <= 0)
+	if (ret <= 0) {
+		log_dbg("'%s' parsing failed", tmp);
 		return (ret);
+	}
 
 	/* Move IPv4 address to the back and set the ::ffff in front of it. */
 	if (af == AF_INET) {
@@ -364,12 +368,16 @@ inet_ptonA(const char *src, ipaddress_t *dst) {
 	if (s) {
 		/* Don't allow negativity. */
 		if (s[1] == '-') {
+			log_dbg("'%s' prefix length '%s' is negative",
+				src, s);
 			errno = ENOMSG;
 			return (-1);
 		}
 
 		/* Get the length from behind the number. */
 		if (sscanf(&s[1], "%u", &l) != 1) {
+			log_dbg("'%s' prefix length '%s' is not a number",
+				src, s);
 			errno = EDOM;
 			return (-1);
 		}
@@ -378,12 +386,14 @@ inet_ptonA(const char *src, ipaddress_t *dst) {
 		 * Users specify a /24, but then it is a /120 to us.
 		 * Only do this when it is IPv4.
 		 */
-		if (af == AF_INET)
+		if (af == AF_INET) {
 			l += 96;
+		}
 	}
 
 	/* Verify that the prefix length is valid. */
 	if (l > 128) {
+		log_dbg("'%s' prefix length %u is too long", src, l);
 		errno = EMSGSIZE;
 		return (-1);
 	}
@@ -391,6 +401,7 @@ inet_ptonA(const char *src, ipaddress_t *dst) {
 	/* Store it. */
 	dst->a8[17] = l;
 
+	log_dbg("'%s' prefix length %u, ret %u", src, l, ret);
 	return (ret);
 }
 
