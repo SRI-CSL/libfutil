@@ -154,7 +154,7 @@ thread_remove(mythread_t *t) {
 
 	fassert(t);
 
-	log_dbg( "Thread %s started", t->description);
+	log_dbg( "Thread %s stopped", t->description);
 
 	list_remove_l(l_threads, &t->node);
 }
