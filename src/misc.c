@@ -1502,7 +1502,7 @@ steg_free(const char *steg, unsigned int steg_len,
 {
 	if (steg != NULL) {
 		fassert(steg_len != 0);
-        	mfree(steg, steg_len, "steg");
+        	mfree(steg, steg_len+1, "steg");
 	}
 
 	if (mime != NULL) {
@@ -1523,7 +1523,7 @@ steg_encode(const char *src, unsigned int srclen,
 
 	/* XXX: we do a silly transform till we have StegoTorus stegs */
 
-	d = mcalloc(srclen, "steg_data");
+	d = mcalloc(srclen+1, "steg_data");
 	m = mcalloc(m_len, "steg_mime");
 	if (d == NULL || m == NULL) {
 		log_crt("No memory for steg_encode");
@@ -1565,7 +1565,7 @@ steg_decode(const char *src, unsigned int srclen,
 		return (false);
 	}
 
-	d = mcalloc(srclen, "steg");
+	d = mcalloc(srclen+1, "steg");
 	if (d == NULL) {
 		log_crt("No memory for steg_decode");
 		return (false);
