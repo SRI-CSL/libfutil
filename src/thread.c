@@ -69,7 +69,7 @@ thread_spawn_mon(void) {
 }
 
 bool
-thread_spawn(char **argv) {
+thread_spawn(char **argv, const char *logfile) {
 #ifndef _WIN32
 	int pid;
 
@@ -96,10 +96,25 @@ thread_spawn(char **argv) {
 	/* Chdir to root so we don't keep any dir busy */
 	if (chdir("/")) {}
 
-	/* Cleanup stdin/out/err */
+	/* Cleanup stdin */
 	if (freopen("/dev/null", "r", stdin)) {}
-	if (freopen("/dev/null", "w", stdout)) {}
-	if (freopen("/dev/null", "w", stderr)) {}
+
+	/* Try to use a logfile? */
+	if (logfile != NULL && freopen(logfile, "a", stdout) == NULL) {
+		/* Failed to open it, thus don't use it */
+		logfile = NULL;
+	}
+
+ 	if (logfile != NULL && freopen(logfile, "a", stderr) == NULL) {
+		/* Failed to open it, thus don't use it */
+		logfile = NULL;
+	}
+
+	if (logfile == NULL) {
+		/* Cleanup stdout/stderr */
+		if (freopen("/dev/null", "w", stdout)) {}
+		if (freopen("/dev/null", "w", stderr)) {}
+	}
 
 	execvp(argv[0], argv);
 #else

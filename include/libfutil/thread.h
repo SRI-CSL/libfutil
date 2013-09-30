@@ -73,6 +73,6 @@ int thread_daemonize(const char *pidfile, const char *username);
 void thread_stop_running(void);
 bool thread_keep_running(void);
 
-bool thread_spawn(char **argv);
+bool thread_spawn(char **argv, const char *logfile);
 
 #endif /* THREAD_H */
