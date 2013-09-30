@@ -34,6 +34,7 @@
 #ifdef _LINUX
 #include <sys/sendfile.h>
 #endif
+#include <sys/wait.h>
 
 #define INVALID_SOCKET		-1
 typedef int64_t			socket_t;
