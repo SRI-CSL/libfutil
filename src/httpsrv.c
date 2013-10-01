@@ -12,12 +12,14 @@
 
 #define HTTPH(h) offsetof(httpsrv_headers_t, h), sizeof (((httpsrv_headers_t *)NULL)->h)
 
+/* We ignore the Content-Length header, this avoids multiple matches */
+#define HTTPH_CONTENT_LENGTH 0
 misc_map_t httpsrv_headers[] = {
-	{ "Host",		HTTPH(hostname)		},
-	{ "Cookie",		HTTPH(cookie)		},
-	{ "Content-Type",	HTTPH(content_type)	},
-	{ "Content-Length",	HTTPH(content_length_s)	},
-	{ NULL,			0, 0 }
+	{ MAPLABEL("Content-Length"),	HTTPH(content_length_s)	},
+	{ MAPLABEL("Host"),		HTTPH(hostname)		},
+	{ MAPLABEL("Cookie"),		HTTPH(cookie)		},
+	{ MAPLABEL("Content-Type"),	HTTPH(content_type)	},
+	{ MAPEND }
 };
 
 /* XXX: order alpha and then bisect search */
@@ -646,18 +648,21 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			continue;
 		}
 
-		/* Add headers to the raw headers */
-		buf_lock(&hcl->the_headers);
-		buf_putl(&hcl->the_headers, line, l);
-		buf_putl(&hcl->the_headers, "\r\n", 2);
-		buf_unlock(&hcl->the_headers);
+		/* Map the header to values that we look for */
+		i = misc_map(line, httpsrv_headers, (char *)&hcl->headers);
 
-		/* Parse the header line */
-		misc_map(line, httpsrv_headers, (char *)&hcl->headers);
+		/* Everything but Content-Length goes in to the raw headers */
+		if (i != HTTPH_CONTENT_LENGTH) {
+			buf_lock(&hcl->the_headers);
+			buf_putl(&hcl->the_headers, line, l);
+			buf_putl(&hcl->the_headers, "\r\n", 2);
+			buf_unlock(&hcl->the_headers);
+		}
 
 		/* Does the caller want headers? */
-		if (hcl->hs->header)
+		if (hcl->hs->header) {
 			hcl->hs->header(hcl, hcl->user, line);
+		}
 	}
 }
 
