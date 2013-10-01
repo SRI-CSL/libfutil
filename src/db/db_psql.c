@@ -249,7 +249,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 	{
 		log_err( "Query still open: %s\n", db->q);
 		log_err( "New Query: %s\n", txt);
-		abort();
+		fabort();
 		return (DB_R_ERR);
 	}
 
