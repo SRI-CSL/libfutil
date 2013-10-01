@@ -321,11 +321,14 @@ void set_timeout(struct timespec *timeout, unsigned int nsec);
 /* For quick mapping of "header: value" strings */
 typedef struct {
 	const char	*label;
-	unsigned int	offset;
-	unsigned int	len;
+	uint16_t	label_len;
+	uint16_t	offset;
+	uint16_t	len;
 } misc_map_t;
 
 int misc_map(const char *str, const misc_map_t *map, char *data);
+#define MAPLABEL(x)	x, sizeof(x)-1
+#define MAPEND		NULL,0,0,0
 
 const char *getprioname(unsigned int level);
 unsigned int getpriolevel(const char *name);

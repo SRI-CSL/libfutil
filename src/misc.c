@@ -580,6 +580,14 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 	len -= (l+2);
 
 	for (i = 0; map[i].label; i++) {
+		/*
+		 * If the length of the label does not
+		 * match we do not need to compare them
+		 */
+		if (l != map[i].label_len) {
+			continue;
+		}
+
 		/* Not it then next */
 		if (strncasecmp(map[i].label, str, l) != 0) {
 			continue;
