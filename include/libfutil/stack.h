@@ -6,8 +6,10 @@ void format_stacktrace(char *buf, unsigned int length, void **trace, unsigned in
 void output_stacktrace(void);
 
 #ifdef DEBUG_STACKDUMPS
-#define fassert(x) { if (!(x)) { output_stacktrace(); abort(); } }
+#define fassert(x) { if (!(x)) { fabort(); } }
+#define fabort() { output_stacktrace(); abort(); }
 #else
+#define fabort() abort()
 #ifndef NDEBUG
 #define fassert(x) assert(x)
 #else
