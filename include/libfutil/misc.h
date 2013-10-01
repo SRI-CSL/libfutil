@@ -325,7 +325,7 @@ typedef struct {
 	unsigned int	len;
 } misc_map_t;
 
-bool misc_map(const char *str, const misc_map_t *map, char *data);
+int misc_map(const char *str, const misc_map_t *map, char *data);
 
 const char *getprioname(unsigned int level);
 unsigned int getpriolevel(const char *name);

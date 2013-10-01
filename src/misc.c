@@ -552,7 +552,7 @@ cond_wait_(cond_t *c, mutex_t *m, unsigned int msec) {
 #endif /* _WIN32 */
 }
 
-bool
+int
 misc_map(const char *str, const misc_map_t *map, char *data) {
 	unsigned int	i = 0, l, len;
 	const char	*s;
@@ -565,7 +565,7 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 
 	/* Should never happen as we feed it but you never know */
 	if (s == NULL) {
-		return (false);
+		return (-1);
 	}
 
 	/* Length of this header */
@@ -573,7 +573,7 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 
 	/* Empty header? */
 	if ((l+2) >= len) {
-		return (false);
+		return (-1);
 	}
 
 	/* Length of the value */
@@ -608,10 +608,10 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 		/* Make sure the string is terminated */
 		data[map[i].offset + len] = '\0';
 
-		return (true);
+		return (i);
 	}
 
-	return (false);
+	return (-1);
 }
 
 static const struct {
