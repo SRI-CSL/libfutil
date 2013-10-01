@@ -2388,11 +2388,12 @@ conn_flush_sendfile(conn_t *conn) {
 	int	r;
 
 	log_dbg(
-		CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ")",
+		CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ") (pre-flush)",
 		conn_id(conn), conn->sendfile_off, conn->sendfile_len);
 
 	off = conn->sendfile_off;
 	cnt = conn->sendfile_len;
+	cnt -= off;
 
 	/*
 	 * Note that this blocks on input,
@@ -2404,48 +2405,67 @@ conn_flush_sendfile(conn_t *conn) {
 	r = sendfile(conn->sock, conn->sendfile_fd, &off, cnt);
 #else
 	/* Darwin/BSD variants */
-	cnt -= off;
 	r = sendfile(conn->sendfile_fd, conn->sock, off, &cnt, NULL, 0);
 #endif
 	if (r == -1) {
+		/* On Linux an error is a hard error, no progress is made */
+#ifndef _LINUX
 		switch (errno) {
 		case EAGAIN:
 			/* We are non-blocking, thus expected */
 			break;
-		case EINTR:
-			/* Interrupts will be handled elsewhere */
-			break;
 		default:
+#endif
 			/* Something broken */
 			log_err(
 				CONN_ID " sendfile() failed",
 				conn->id);
 			conn_sendfile_done(conn);
 			return (false);
+#ifndef _LINUX
 		}
 
 		/* Should always go forward */
 		assert((uint64_t)off >= conn->sendfile_off);
 
-		log_dbg(
-			CONN_ID " sendfile(%" PRIu64 "/%" PRIu64 ") = %" PRIu64,
-			conn_id(conn), conn->sendfile_off, conn->sendfile_len,
-			off - conn->sendfile_off);
-
 		/* Store our new offset */
-#ifdef _LINUX
-		conn->sendfile_off = off;
-#else
 		conn->sendfile_off += cnt;
+
+		log_dbg(
+			CONN_ID " sendfile(%" PRIu64 "/"
+			"%" PRIu64 ") = %0.2f%%",
+			conn_id(conn),
+			conn->sendfile_off,
+			conn->sendfile_len,
+			(float)conn->sendfile_off * 100 / (float)conn->sendfile_len);
 #endif
 	} else {
 		assert(r >= 0);
+#ifdef _LINUX
+		/* Linux stores the new offset in off */
+		conn->sendfile_off = off;
+
+		log_dbg(
+			CONN_ID " sendfile(%" PRIu64 "/"
+			"%" PRIu64 ") = %0.2f%%",
+			conn_id(conn),
+			conn->sendfile_off,
+			conn->sendfile_len,
+			(float)conn->sendfile_off * 100 / (float)conn->sendfile_len);
+
+		/* Done? */
+		if (conn->sendfile_off >= conn->sendfile_len)
+		{
+#endif
 		conn_sendfile_done(conn);
 
-		log_dbg( CONN_ID " flush complete", conn_id(conn));
+		log_dbg(CONN_ID " flush complete", conn_id(conn));
 
 		/* Nothing to flush thus continue polling for incoming */
 		conn_eventsA(conn, CONN_POLLIN);
+#ifdef _LINUX
+		}
+#endif
 	}
 
 	return (true);
@@ -2540,15 +2560,11 @@ conn_flush(conn_t *conn) {
 		fassert((len_b + len_h) != 0);
 
 		if (conn->real_contentlen > 0 || len_b > 0) {
-			log_dbg(
-				CONN_ID " Outputting Content-Length: %" PRIu64,
-				conn_id(conn), len_b);
-
-#ifdef NETWORK_DETAILS
-			conn_addheaderf(conn,
-				"CONN-Content-CONN-Length: %" PRIu64,
-				len_b);
-#endif
+			if (len_b > 0) {
+				log_dbg(
+					CONN_ID " Have Content-Length: %" PRIu64,
+					conn_id(conn), len_b);
+			}
 
 			if (conn->real_contentlen != 0) {
 				log_dbg( CONN_ID
