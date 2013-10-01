@@ -493,6 +493,8 @@ conn_set_blocking(conn_t *conn) {
 	u_long flags;
 #endif
 
+	fassert(conn_is_valid(conn));
+
 #ifdef O_NONBLOCK
 	if (-1 == (flags = fcntl(conn->sock, F_GETFL, 0))) flags = 0;
 	fcntl(conn->sock, F_SETFL, flags & ~O_NONBLOCK);
@@ -1184,7 +1186,6 @@ conn_init(conn_t *conn, void *clientdata)
 	conn->connset = NULL;
 	conn->clientdata = clientdata;
 	conn_set_state(conn, CONN_UNUSED);
-	conn->add_contentlen = true;
 
 	conn->sendfile_fd = -1;
 	conn->sendfile_off = 0;
@@ -1203,16 +1204,23 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 
 	fassert(conn_is_valid(conn));
 
+	/* Nothing to do? */
+        if (conn->wntevents == events)
+		return;
+
 	/*
 	 * We allow sockets to work without a connset
 	 * they are synchronous then though
 	 */
-	if (conn->connset == NULL)
-		return;
+	if (conn->connset == NULL) {
+		conn->wntevents = events;
 
-	/* Nothing to do? */
-        if (conn->wntevents == events)
+		log_dbg(CONN_ID " no connset, events set to: %s %s",
+			conn_id(conn),
+			conn_wnt_in(conn)	? "IN" : ".",
+			conn_wnt_out(conn)	? "OUT" : ".");
 		return;
+	}
 
 	/* Lock her up */
 	connset_lock(conn->connset);
@@ -1291,7 +1299,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 		}
 
 		log_dbg(
-			CONN_ID " (non-handling done)",
+			CONN_ID " (non-handling portion done)",
 			conn_id(conn));
 	}
 
@@ -1346,21 +1354,38 @@ static void
 conn_set_connset(conn_t *conn, connset_t *cs) {
 	uint16_t events = conn->wntevents;
 
+	log_dbg(CONN_ID " has%s current",
+		conn_id(conn),
+		conn->connset == NULL ? " no" : "");
+
 	/*
 	 * With a connset it is a non-blocking socket
 	 * Without a connset it is a blocking socket
 	 */
 
 	/* Nothing to do if it is the same connset */
-	if (conn->connset == cs)
+	if (conn->connset == cs) {
+		if (cs != NULL) {
+			log_dbg(CONN_ID " same connset " CONNS_ID,
+				conn_id(conn), conn->connset->id);
+		} else {
+			log_dbg(CONN_ID " no connset",
+				conn_id(conn));
+		}
 		return;
+	}
 
 	/* Remove from old connset */
-	if (conn->connset != NULL)
+	if (conn->connset != NULL) {
+		log_dbg(CONN_ID " old connset " CONNS_ID,
+			conn_id(conn), conn->connset->id);
 		conn_eventsA(conn, 0);
+	}
 
 	/* Add to new connset */
 	if (cs != NULL) {
+		log_dbg(CONN_ID " new connset " CONNS_ID,
+			conn_id(conn), cs->id);
 		conn_eventsA(conn, events);
 	}
 
@@ -1521,7 +1546,7 @@ connset_handling_done(conn_t *conn, bool keeplocked) {
 	/* Has to be one some list */
 	fassert(conn->connset_l != NULL);
 
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg( CONN_ID " (kh=%s)", conn_id(conn), yesno(keeplocked));
 
 	/* Lock it */
 	conn_lock(conn);
@@ -1605,8 +1630,12 @@ conn_close(conn_t *conn) {
 	/* Don't want to hear from this socket any further */
 	conn_eventsA(conn, CONN_POLLNONE);
 
-	/* Make the socket temporarily blocking */
-	conn_set_nonblocking(conn);
+	/*
+	 * Make the socket temporarily blocking
+	 * This so we are sure that the shutdown()
+	 * is totally completed
+	 */
+	conn_set_blocking(conn);
 
 	/* Shutdown the socket */
 	shutdown(conn->sock, SHUT_RDWR);
@@ -1936,7 +1965,7 @@ conn_recvA(conn_t *conn) {
 	ssize_t		r;
 
 	fassert(conn_is_valid(conn));
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID " " SOCK_ID, conn_id(conn), conn_sock(conn));
 
 	buf_lock(&conn->recv);
 
@@ -2510,8 +2539,7 @@ conn_flush(conn_t *conn) {
 		/* Add separating when we didn't yet \n */
 		fassert((len_b + len_h) != 0);
 
-		if (conn->add_contentlen &&
-		    (conn->real_contentlen > 0 || len_b > 0)) {
+		if (conn->real_contentlen > 0 || len_b > 0) {
 			log_dbg(
 				CONN_ID " Outputting Content-Length: %" PRIu64,
 				conn_id(conn), len_b);
@@ -2774,22 +2802,31 @@ conn_copy(conn_t *in, conn_t *out) {
 uint64_t
 conn_copym(conn_t *in, conn_t *out, uint64_t max) {
 	uint64_t	len;
-	bool		ret;
+	bool		ok;
+
+	/* How much is in the buffer? */
+	len = conn_buffer_cur(in);
+
+	if (len == 0) {
+		/* Nothing there */
+		return (0);
+	}
 
 	/* Only copy upto 'max' bytes */
-	len = conn_buffer_cur(in);
-	if (max < len) len = max;
+	if (len > max) {
+		len = max;
+	}
 
 	/* Copy the received buffer from the in to the out */
-	ret = conn_putl(out, conn_buffer(in), len);
+	ok = conn_putl(out, conn_buffer(in), len);
 
 	/* All okay */
-	if (ret) {
+	if (ok) {
 		/* Input has been processed */
 		conn_buffer_shift(in, len);
 	}
 
-	return (ret ? len : 0);
+	return (ok ? len : 0);
 }
 
 bool
@@ -2887,15 +2924,15 @@ conn_create_listen(connset_t *connset,
 		errfunc = NULL;
 
 		sock = socket(res->ai_family,
-#ifdef _LINUX
+#ifdef SOCK_CLOEXEC
 			      SOCK_CLOEXEC |
 #endif
 			      res->ai_socktype,
 			      res->ai_protocol);
 
 		if (sock != INVALID_SOCKET) {
-#ifndef _LINUX
-#ifndef _WIN32
+#ifndef SOCK_CLOEXEC
+#ifdef FD_CLOEXEC
 			/* Ensure FD_CLOEXEC is set for platforms without SOCK_CLOEXEC */
 			/* No fork() on Windows, thus not needed there */
 			fcntl(sock, F_SETFD, FD_CLOEXEC);
@@ -3002,9 +3039,10 @@ conn_create_listen(connset_t *connset,
 
 /*
  * Create a connection to a host:service.
+ *
  * We use connected sockets even for datagram connections
- * These are non-blocking and thus connset_poll() has to
- * determine when it is actually connected
+ *
+ * Depending if a connset is given the connection is blocking or not
  */
 bool
 conn_create_connection(conn_t *conn, const char *hostname,
@@ -3015,7 +3053,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 	unsigned int		type;
 	int			n;
 
-	fassert(conn);
+	fassert(conn_is_there(conn));
 	fassert(hostname != NULL);
 	fassert(port != 0);
 
@@ -3023,7 +3061,8 @@ conn_create_connection(conn_t *conn, const char *hostname,
 
 	conn_lock(conn);
 
-	log_dbg( CONN_ID " (%s:%s)", conn_id(conn), hostname, service);
+	log_dbg(CONN_ID " (%s:%s) [%sblocking]",
+		conn_id(conn), hostname, service, connset ? "non" : "");
 
 	type = (protocol == IPPROTO_TCP ? SOCK_STREAM : SOCK_DGRAM);
 
@@ -3056,7 +3095,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 					hostname, protocol, port, buf);
 
 		conn->sock = socket(res->ai_family,
-#ifdef _LINUX
+#ifdef SOCK_CLOEXEC
 				    SOCK_CLOEXEC |
 #endif
 			            res->ai_socktype,
@@ -3065,8 +3104,8 @@ conn_create_connection(conn_t *conn, const char *hostname,
 		if (conn->sock != INVALID_SOCKET) {
 			log_dbg( "Socket " SOCK_ID,
 				conn_sock(conn));
-#ifndef _LINUX
-#ifndef _WIN32
+#ifndef SOCK_CLOEXEC
+#ifdef FD_CLOEXEC
 			/*
 			 * Ensure FD_CLOEXEC is set for platforms
 			 * without SOCK_CLOEXEC
@@ -3074,8 +3113,11 @@ conn_create_connection(conn_t *conn, const char *hostname,
 			fcntl(conn->sock, F_SETFD, FD_CLOEXEC);
 #endif
 #endif
+			/* No events for now */
+			conn_eventsA(conn, CONN_POLLNONE);
+
 			/* To block or to not to block? */
-			if (connset)
+			if (connset != NULL)
 				conn_set_nonblocking(conn);
 			else
 				conn_set_blocking(conn);
@@ -3105,9 +3147,6 @@ conn_create_connection(conn_t *conn, const char *hostname,
 				/* Swap over to the given connset */
 				conn_set_connset(conn, connset);
 
-				/* We want to know all about this socket */
-				conn_eventsA(conn, CONN_POLLIN | CONN_POLLOUT);
-
 				break;
 			} else {
 				log_ntc(
@@ -3133,9 +3172,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 
 /*
  * Create a connection to a host:service.
- * Note that this is a blocking version
- * It produces a nonblocking socket when a connset is provided
- * but blocks for the duration of the connect
+ * Note that this is a blocking version as no connset gets provided
  */
 bool
 conn_connect(conn_t *conn, const char *host,
@@ -3165,7 +3202,7 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 
 	/* Accept the socket */
 #ifdef _LINUX
-	conn->sock = accept4(lconn->sock, NULL, 0, SOCK_CLOEXEC);
+	conn->sock = accept4(lconn->sock, NULL, 0, SOCK_CLOEXEC | SOCK_NONBLOCK);
 #else
 	conn->sock = accept(lconn->sock, NULL, 0);
 #endif
@@ -3189,8 +3226,13 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 #endif
 #endif
 
-	/* Take over the connset from the listening socket */
-	conn_set_connset(conn, lconn->connset);
+	if (lconn->connset != NULL) {
+		/* Take over the connset from the listening socket */
+		conn_set_connset(conn, lconn->connset);
+
+		/* Make us nonblocking too */
+		conn_set_nonblocking(conn);
+	}
 
 	conn->protocol	= lconn->protocol;
 	conn->port	= lconn->port;

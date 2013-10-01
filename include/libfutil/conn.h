@@ -74,7 +74,6 @@ struct conn {
 	buf_t			send;		/* Sending side */
 	buf_t			send_headers;	/* Headers to send */
 	uint64_t		real_contentlen;/* Real content length */
-	bool			add_contentlen;	/* Add Content-Length header? */
 
 	conn_posthandle_f	posthandle_f;	/* Post Handling function */
 	void			*posthandle_u;	/* User data */
@@ -157,7 +156,7 @@ bool conn_sendfile(conn_t *conn, const char *file);
 
 #define CONN_IDn "c%" PRIu64 ""
 #define CONN_ID "[" CONN_IDn "]"
-#define CONNS_ID "[s%" PRIu64 "]"
+#define CONNS_ID "[cs%" PRIu64 "]"
 
 #define SOCK_ID "[fd%d]"
 
@@ -181,7 +180,6 @@ bool conn_sendfile(conn_t *conn, const char *file);
 #define conn_send_isempty(conn) (buf_cur(&(conn)->send) == 0)
 
 #define conn_set_real_contentlen(conn, len) (conn)->real_contentlen = (len)
-#define conn_add_contentlen(conn, yesno) (conn)->add_contentlen = (yesno)
 
 #define conn_header_empty(conn) (buf_empty(&(conn)->send_headers))
 
