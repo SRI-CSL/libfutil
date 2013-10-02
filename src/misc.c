@@ -1097,6 +1097,31 @@ strerror_r(int errnum, char *strerrbuf, size_t buflen) {
 
 #endif /* _WIN32 */
 
+#if (__DARWIN_C_LEVEL < 200809L ||				\
+     (!defined(_DARWIN) && _XOPEN_SOURCE < 700 && _POSIX_C_SOURCE < 200809L))
+char *stpncpy(char *dest, const char *src, size_t n) {
+	unsigned int i, j;
+
+	/* Max n chars */
+	for (i=0; i < n; i++) {
+		dest[i] = src[i];
+
+		/* Stop when we hit \0 */
+		if (src[i] == '\0')
+			break;
+	}
+
+	/* Wipe out the rest */
+	for (j = i; j < n; j++) {
+		dest[j] = '\0';
+	}
+
+	/* Return the first \0 or end */
+	return (&dest[i]);
+}
+
+#endif /* stpncpy */
+
 /*
  * Format a string while allocating it too at the right length
  *
