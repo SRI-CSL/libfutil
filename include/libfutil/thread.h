@@ -85,7 +85,8 @@ typedef struct {
 } myprocess_t;
 
 void process_terminate(myprocess_num_t process_num, bool force);
-myprocess_num_t process_spawn(char **argv, const char *logfile);
+void process_cmdline(char * const argv[], char *cmdline, unsigned int len);
+myprocess_num_t process_spawn(char * const argv[], const char *logfile);
 
 typedef void (*process_list_f)(void		*cbdata,
 			      uint64_t		num,

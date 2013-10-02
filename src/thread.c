@@ -41,6 +41,40 @@ thread_unlock(mythread_t *t) {
 }
 
 void
+process_cmdline(const char * const argv[], char *cmdline, unsigned int len) {
+	unsigned int	i, off, l;
+	char		*cur;
+
+	/*
+	 * stpncpy returns a non-\0 terminated string
+	 * when the input is longer than the dest
+	 * we memzero first and then limit what we
+	 * output to avoid these situations
+	 */
+	cur = cmdline;
+	memzero(cmdline, len);
+	for (i = 0, off = 0; argv[i]; i++) {
+		l = strlen(argv[i]);
+
+		if ((l + off + 2) >= len)
+			break;
+
+		/* Add a space for non-first arguments */
+		if (i != 0) {
+			*cur = ' ';
+			cur++;
+			off++;
+		}
+
+		/* Add the argument */
+		cur = stpncpy(cur, argv[i], l);
+
+		/* A bit further */
+		off += l;
+	}
+}
+
+void
 process_cleanup(myprocess_t *p);
 void
 process_cleanup(myprocess_t *p) {
@@ -157,20 +191,12 @@ process_spawn_mon(void) {
 	} else if (rc > 0) {
 		pid = rc;
 
-		if (WIFEXITED(status)) {
-			log_dbg("pid %" PRIu64 " exited, status=%d",
-				pid, WEXITSTATUS(status));
-		} else if (WIFSIGNALED(status)) {
-			log_dbg("pid %" PRIu64 " killed by signal %d",
-				pid, WTERMSIG(status));
-		}
-
 		/* Lets see if we have this pid */
 		/* One from the list? */
 		list_lock(l_processes);
 		list_for(l_processes, p, pn, myprocess_t *) {
 			if (p->pid != pid)
-			continue;
+				continue;
 
 			/* Gotcha */
 			found = p;
@@ -178,6 +204,17 @@ process_spawn_mon(void) {
 			break;
 		}
 		list_unlock(l_processes);
+
+		if (WIFEXITED(status)) {
+			log_dbg("PID %" PRIu64 " (%s) exited, status=%d",
+				pid, found ? found->description : "(not found",
+				WEXITSTATUS(status));
+
+		} else if (WIFSIGNALED(status)) {
+			log_dbg("PID %" PRIu64 " (%s) killed by signal %d",
+				pid, found ? found->description : "(not found",
+				WTERMSIG(status));
+		}
 
 		if (found) {
 			process_cleanup(found);
@@ -195,11 +232,12 @@ process_spawn_mon(void) {
 }
 
 myprocess_num_t
-process_spawn(char **argv, const char *logfile) {
+process_spawn(char *const argv[], const char *logfile) {
 #ifndef _WIN32
 	static myprocess_num_t	process_num;
 	int			pid;
 	myprocess_t		*p;
+	char			cmdline[128];
 
 	/* We should be initialized */
 	assert(l_threads != NULL);
@@ -285,9 +323,12 @@ process_spawn(char **argv, const char *logfile) {
 #else
 #error "Not implemented"
 #endif
+	/* Get the full line */
+	process_cmdline((const char * const *)&argv[0], cmdline, sizeof cmdline);
 
 	/* Happens when we fail to execute, nothing we can do here */
-	log_err("execve(%s) failed", argv[0]);
+	log_err("execvp(%s) failed", cmdline);
+
 	exit(-66);
 	return (0);
 }
