@@ -444,7 +444,6 @@ static void
 httpsrv_handle_http(httpsrv_client_t *hcl);
 static void
 httpsrv_handle_http(httpsrv_client_t *hcl) {
-	char		line[4096];
 	int		i;
 	unsigned int	l, m;
 	uint32_t	t32;
@@ -485,7 +484,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		}
 
 		/* There should be something in this buffer */
-		i = conn_recvline(&hcl->conn, line, sizeof line);
+		i = conn_recvline(&hcl->conn, hcl->line, sizeof hcl->line);
 		if (i == -EINVAL) {
 			httpsrv_error(hcl, 400,
 				      "ASCII NUL character found in stream");
@@ -528,7 +527,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		l = i;
 
 		/* Empty line == end of command */
-		if (l == 1 && line[0] == '\n') {
+		if (l == 1 && hcl->line[0] == '\n') {
 			log_dbg(
 				HCL_ID " Got an empty line",
 				hcl->id);
@@ -603,18 +602,18 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 		}
 
 		/* Remove trailing \n */
-		line[--l] = '\0';
+		hcl->line[--l] = '\0';
 
 		log_dbg(
 			HCL_ID" got line (len=%u) : %s",
-			hcl->id, l, line);
+			hcl->id, l, hcl->line);
 
 		/* No method yet? */
 		if (hcl->method == HTTP_M_NONE) {
 			for (m = 1; m < lengthof(http_methods); m++) {
-				if (strncasecmp(line, http_methods[m].name,
+				if (strncasecmp(hcl->line, http_methods[m].name,
 						http_methods[m].len) != 0 ||
-				    line[http_methods[m].len] != ' ') {
+				    hcl->line[http_methods[m].len] != ' ') {
 					continue;
 				}
 
@@ -625,7 +624,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			if (hcl->method == HTTP_M_NONE) {
 				log_ntc(
 					HCL_ID " Unknown HTTP: %s",
-					hcl->id, line);
+					hcl->id, hcl->line);
 
 				httpsrv_error(hcl, 501, "Not Implemented");
 				httpsrv_close(hcl);
@@ -635,7 +634,7 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			if (l >= sizeof hcl->the_request) {
 				log_ntc(
 					HCL_ID " Request Too Big: %s",
-					hcl->id, line);
+					hcl->id, hcl->line);
 
 				httpsrv_error(hcl, 414, "Request-URI Too Long");
 				httpsrv_close(hcl);
@@ -643,25 +642,25 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			}
 
 			/* Store the request for later parsing */
-			memcpy(hcl->the_request, line, l);
+			memcpy(hcl->the_request, hcl->line, l);
 			hcl->the_request[l] = '\0';
 			continue;
 		}
 
 		/* Map the header to values that we look for */
-		i = misc_map(line, httpsrv_headers, (char *)&hcl->headers);
+		i = misc_map(hcl->line, httpsrv_headers, (char *)&hcl->headers);
 
 		/* Everything but Content-Length goes in to the raw headers */
 		if (i != HTTPH_CONTENT_LENGTH) {
 			buf_lock(&hcl->the_headers);
-			buf_putl(&hcl->the_headers, line, l);
+			buf_putl(&hcl->the_headers, hcl->line, l);
 			buf_putl(&hcl->the_headers, "\r\n", 2);
 			buf_unlock(&hcl->the_headers);
 		}
 
 		/* Does the caller want headers? */
 		if (hcl->hs->header) {
-			hcl->hs->header(hcl, hcl->user, line);
+			hcl->hs->header(hcl, hcl->user, hcl->line);
 		}
 	}
 }

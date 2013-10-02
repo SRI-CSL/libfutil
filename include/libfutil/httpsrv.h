@@ -103,7 +103,8 @@ struct httpsrv_client {
 	httpsrv_t		*hs;		/* HTTP Server */
 	conn_t			conn;		/* Connection */
 	http_method_t		method;		/* HTTP Method */
-	char			the_request[4096]; /* Full HTTP request */
+	char			line[16*1024];		/* Request line */
+	char			the_request[16*1024]; /* Full HTTP request */
 	buf_t			the_headers;	/* All headers (raw) */
 	httpsrv_headers_t	headers;	/* Inbound headers */
 	bool			close;		/* Close it? */
