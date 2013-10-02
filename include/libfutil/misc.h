@@ -364,11 +364,11 @@ int strerror_r(int errnum, char *strerrbuf, size_t buflen);
 #endif
 
 /* These are available in OSX 10.7+ and IOS 4.3+ or glibc 2.10+ */
-#if ((__DARWIN_C_LEVEL < 200809L ||		\
-     (!defined(_DARWIN) &&			\
-		_XOPEN_SOURCE < 700 &&		\
-		_POSIX_C_SOURCE < 200809L)) &&	\
-     !defined(__USE_XOPEN2K8))
+#if (	(__DARWIN_C_LEVEL < 200809L ||			\
+		(!defined(_DARWIN) &&			\
+			_XOPEN_SOURCE < 700 &&		\
+			_POSIX_C_SOURCE < 200809L)) &&	\
+	!defined(__USE_XOPEN2K8))
 char *stpncpy(char *, const char *, size_t);
 #endif
 
