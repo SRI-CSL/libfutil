@@ -31,7 +31,7 @@ typedef struct {
 	os_thread_id	thread_id;	/* Thread Identifier */
 	uint64_t	thread_num;	/* Thread number */
 	thread_status_t	state;		/* Sleeping? */
-	time_t		starttime;	/* Time thread started */
+	uint64_t	starttime;	/* Time thread started */
 	cond_t		cond;		/* Condition variable */
 	bool		cancelable;	/* Cancel this thread at exit? */
 	uint64_t	served;		/* Requests served */
@@ -73,6 +73,29 @@ int thread_daemonize(const char *pidfile, const char *username);
 void thread_stop_running(void);
 bool thread_keep_running(void);
 
-bool thread_spawn(char **argv, const char *logfile);
+typedef uint64_t myprocess_num_t;
+
+typedef struct {
+	hnode_t		node;		/* List of all threads */
+	myprocess_num_t	num;		/* Process Number */
+	uint64_t	pid;		/* PID */
+	uint64_t	starttime;	/* Time started */
+	const char	*description;	/* Name of process */
+	const char	*logfile;	/* Logfile location */
+} myprocess_t;
+
+void process_terminate(myprocess_num_t process_num, bool force);
+myprocess_num_t process_spawn(char **argv, const char *logfile);
+
+typedef void (*process_list_f)(void		*cbdata,
+			      uint64_t		num,
+			      uint64_t		pid,
+			      const char	*starttime,
+			      uint64_t		runningsecs,
+			      const char	*description,
+			      const char	*state,
+			      const char	*logfile);
+
+unsigned int process_list(process_list_f cb, void *cbdata);
 
 #endif /* THREAD_H */

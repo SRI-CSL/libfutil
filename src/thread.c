@@ -6,6 +6,8 @@
 
 /* List of all the threads */
 static hlist_t *l_threads = NULL;
+/* List of all the processes */
+static hlist_t *l_processes = NULL;
 #ifndef _WIN32
 static mutex_t l_tmutex = PTHREAD_MUTEX_INITIALIZER;
 #else
@@ -39,10 +41,109 @@ thread_unlock(mythread_t *t) {
 }
 
 void
-thread_spawn_mon(void);
+process_cleanup(myprocess_t *p);
 void
-thread_spawn_mon(void) {
-	int	pid, status;
+process_cleanup(myprocess_t *p) {
+	if (p->description)
+		mfreestrdup(p->description, "process_description");
+
+	if (p->logfile)
+		mfreestrdup(p->logfile, "process_logfile");
+
+	mfree(p, sizeof *p, "myprocess");
+}
+
+void
+process_destroy(myprocess_t *p, bool force);
+void
+process_destroy(myprocess_t *p, bool force) {
+	int r;
+
+	fassert(p != NULL)
+
+	log_dbg("Signalling %u to %s at PID %" PRIu64")",
+		force ? SIGKILL : SIGTERM,
+		p->description, p->pid);
+
+	r = kill(p->pid, force ? SIGKILL : SIGTERM);
+
+	switch (r) {
+	case 0:
+		log_dbg("Successfuly sent SIGTERM to %s at PID %" PRIu64,
+			p->description, p->pid);
+		break;
+
+	case ESRCH:
+		log_wrn("%s at PID %" PRIu64 " was missing",
+			p->description, p->pid);
+		break;
+
+	default:
+		log_err("Could not sent SIGTERM to %s at PID %" PRIu64,
+			p->description, p->pid);
+		break;
+	}
+
+	/* Cleanup the process */
+	process_cleanup(p);
+
+	/*
+	 * Note that the process might have received the signal but
+	 * might actually not have exited at this point
+	 */
+}
+
+void
+process_terminate(myprocess_num_t process_num, bool force) {
+	myprocess_t *p, *pn, *found = NULL;
+
+	/* One from the list? */
+	list_lock(l_processes);
+	list_for(l_processes, p, pn, myprocess_t *) {
+		if (p->num == process_num)
+			continue;
+
+		/* Gotcha */
+		found = p;
+		list_remove(l_processes, &found->node);
+		break;
+	}
+	list_unlock(l_processes);
+
+	if (found == NULL) {
+		log_wrn("Process %" PRIu64 " not found", process_num);
+		return;
+	}
+
+	/* Destroy + cleanup */
+	process_destroy(p, force);
+}
+
+void
+process_stopall(bool force);
+void
+process_stopall(bool force) {
+	myprocess_t *p;
+
+	log_dbg("Signaling processes that they should exit");
+
+	/* Must be initialized */
+	fassert(l_threads != NULL);
+
+	while ((p = (myprocess_t *)list_pop(l_processes))) {
+		process_destroy(p, force);
+	}
+
+	log_dbg("done");
+}
+
+static void
+process_spawn_mon(void);
+static void
+process_spawn_mon(void) {
+	int		rc, status;
+	uint64_t	pid;
+	myprocess_t	*p, *pn, *found = NULL;
 
 	/*
 	 * One-shot, should be called once in a while
@@ -50,51 +151,110 @@ thread_spawn_mon(void) {
 	 *
 	 * Called from thread_sleep()
 	 */
-	pid = waitpid(-1, &status, WNOHANG);
-	if (pid == 0) {
+	rc = waitpid(-1, &status, WNOHANG);
+	if (rc == 0) {
 		/* All okay */
-	} else if (pid > 0) {
+	} else if (rc > 0) {
+		pid = rc;
+
 		if (WIFEXITED(status)) {
-			log_dbg("pid %u exited, status=%d",
+			log_dbg("pid %" PRIu64 " exited, status=%d",
 				pid, WEXITSTATUS(status));
 		} else if (WIFSIGNALED(status)) {
-			log_dbg("pid %u killed by signal %d",
+			log_dbg("pid %" PRIu64 " killed by signal %d",
 				pid, WTERMSIG(status));
 		}
-	} else if (pid == EINVAL) {
+
+		/* Lets see if we have this pid */
+		/* One from the list? */
+		list_lock(l_processes);
+		list_for(l_processes, p, pn, myprocess_t *) {
+			if (p->pid != pid)
+			continue;
+
+			/* Gotcha */
+			found = p;
+			list_remove(l_processes, &found->node);
+			break;
+		}
+		list_unlock(l_processes);
+
+		if (found) {
+			process_cleanup(found);
+		} else {
+			log_dbg("PID %" PRIu64 " disappeared but not "
+				"in process list anymore",
+				pid);
+		}
+
+	} else if (rc == EINVAL) {
 		log_crt("waitpid failed (EINVAL)");
 	} else {
 		/* We ignore these */
 	}
 }
 
-bool
-thread_spawn(char **argv, const char *logfile) {
+myprocess_num_t
+process_spawn(char **argv, const char *logfile) {
 #ifndef _WIN32
-	int pid;
+	static myprocess_num_t	process_num;
+	int			pid;
+	myprocess_t		*p;
 
 	/* We should be initialized */
 	assert(l_threads != NULL);
+	assert(l_processes != NULL);
 
 	log_dbg("%s", argv[0]);
 
 	/* Daemonize */
 	pid = fork();
 	if (pid < 0) {
-		log_crt("Couldn't fork");
-		return (-1);
+		log_crt("Couldn't fork for %s", argv[0]);
+		return (0);
 	}
 
-	/* Mother fork, return success */
+	/* Mother fork, return PID */
 	if (pid != 0) {
 		/* Nothing further to do here */
-		return (true);
+		log_dbg("Launched %s as PID %u%s%s",
+			argv[0], pid,
+			logfile != NULL ? " with logfile " : "",
+			logfile != NULL ? logfile : "");
+		p = mcalloc(sizeof *p, "myprocess");
+
+		if (p == NULL) {
+			log_crt("No memory for process");
+			return (0);
+		}
+
+		mutex_lock(l_tmutex);
+		p->num = ++process_num;
+		mutex_unlock(l_tmutex);
+
+		/* The PID of this process */
+		p->pid = pid;
+
+		/*
+		 * Store the description and logfile
+		 * to be able to later see what we
+		 * started and where possible output
+		 * is being logged to
+		 */
+		p->description	= mstrdup(argv[0], "process_description");
+		p->logfile	= logfile ?
+				  mstrdup(logfile, "process_logfile") : NULL;
+
+		/* Note the time it started */
+		p->starttime = gettime();
+
+		/* Add it to the list */
+		list_addtail_l(l_processes, &p->node);
+
+		return (p->num);
 	}
 
-	/* Client portion */
-
-	/* Chdir to root so we don't keep any dir busy */
-	if (chdir("/")) {}
+	/* Child fork */
 
 	/* Cleanup stdin */
 	if (freopen("/dev/null", "r", stdin)) {}
@@ -116,6 +276,11 @@ thread_spawn(char **argv, const char *logfile) {
 		if (freopen("/dev/null", "w", stderr)) {}
 	}
 
+	/* Chdir to root so we don't keep any dir busy */
+	if (chdir("/") == -1) {
+		perror("setpgid");
+	}
+
 	execvp(argv[0], argv);
 #else
 #error "Not implemented"
@@ -124,7 +289,70 @@ thread_spawn(char **argv, const char *logfile) {
 	/* Happens when we fail to execute, nothing we can do here */
 	log_err("execve(%s) failed", argv[0]);
 	exit(-66);
-	return (false);
+	return (0);
+}
+
+unsigned int
+process_list(process_list_f cb, void *cbdata) {
+	myprocess_t	*p, *pn, *pc;
+	struct tm	teem;
+	uint64_t	now = gettime();
+	unsigned int	cnt = 0;
+	char		st[64], state[64];
+	hlist_t		pl;
+	time_t		tee;
+
+	list_init(&pl);
+
+	list_lock(l_processes);
+	list_for(l_processes, p, pn, myprocess_t *) {
+		pc = mcalloc(sizeof *pc, "tmpprocess");
+		if (pc == NULL)
+			break;
+
+		/* Clone it */
+		memcpy(pc, p, sizeof *pc);
+
+		/* Empty the node, it is a clone */
+		node_init(&pc->node);
+
+		list_addtail(&pl, &pc->node);
+
+		/* Another process */
+		cnt++;
+	}
+	list_unlock(l_processes);
+
+	/* Now, lockless, do the call backs */
+	list_for(&pl, p, pn, myprocess_t *) {
+		/* Format the start time */
+		tee = p->starttime;
+		localtime_r(&tee, &teem);
+		snprintf(st, sizeof st, FMT_DATETIME, fmt_datetime(teem));
+
+		/* Use kill() to determine if it is still there */
+		snprintf(state, sizeof state,
+			kill(p->pid, 0) == -1 ?
+				"not found" :
+				"still running"
+			);
+
+		/* Callback which might actually show the details */
+		cb(cbdata,
+		   p->num,
+		   p->pid,
+		   st,
+		   now - p->starttime,
+		   p->description,
+		   state,
+		   p->logfile ? p->logfile : "(none)");
+
+		mfree(p, sizeof *p, "tmpprocess");
+	}
+
+	list_destroy(&pl);
+
+	return (cnt);
 }
 
 #ifndef _WIN32
@@ -160,7 +388,13 @@ thread_init(void) {
 
 	l_threads = mcalloc(sizeof *l_threads, "l_threads");
 	if (!l_threads) {
-		log_err("Could not add main thread!?");
+		log_err("No memory for thread list!?");
+		return (false);
+	}
+
+	l_processes = mcalloc(sizeof *l_processes, "l_processes");
+	if (!l_processes) {
+		log_err("No memory for process list!?");
 		return (false);
 	}
 
@@ -171,6 +405,7 @@ thread_init(void) {
 #endif
 
 	list_init(l_threads);
+	list_init(l_processes);
 
 	if (!thread_add("Main", NULL, NULL)) {
 		log_err("Could not add main thread!?");
@@ -320,7 +555,7 @@ thread_sleep(unsigned int msec) {
 	bool		ret;
 
 	/* Check for any finished subprocesses */
-	thread_spawn_mon();
+	process_spawn_mon();
 
 	t = thread_getthis();
 
@@ -419,7 +654,9 @@ thread_add(const char *description, void *(*start_routine)(void *), void *arg)
 	node_init(&t->node);
 	mutex_init(t->mutex);
 	cond_init(t->cond);
+	mutex_lock(l_tmutex);
 	t->thread_num = ++thread_num;
+	mutex_unlock(l_tmutex);
 	t->description = mstrdup(description, "thread_description");
 	t->start_routine = start_routine;
 	t->arg = arg;
@@ -558,12 +795,23 @@ thread_exit(void) {
 
 	fassert(l_threads != NULL);
 
+	/* Tell them they will be going */
+	thread_stop_running();
+
+	/* Stop all running processes */
+	process_stopall(true);
+
 	/* Stop all running threads */
 	thread_stopall(true);
 
+	fassert(list_isempty(l_processes));
 	fassert(list_isempty(l_threads));
 
 	log_inf("Shutting down");
+
+	list_destroy(l_processes);
+	mfree(l_processes, sizeof *l_threads, "l_processes");
+	l_processes = NULL;
 
 	list_destroy(l_threads);
 	mfree(l_threads, sizeof *l_threads, "l_threads");
@@ -588,6 +836,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 	unsigned int	cnt = 0;
 	char		st[64];
 	hlist_t		tl;
+	time_t		tee;
 
 	list_init(&tl);
 
@@ -615,7 +864,8 @@ thread_list(thread_list_f cb, void *cbdata) {
 	/* Now, lockless, do the call backs */
 	list_for(&tl, t, tn, mythread_t *) {
 		/* Format the start time */
-		localtime_r(&t->starttime, &teem);
+		tee = t->starttime;
+		localtime_r(&tee, &teem);
 		snprintf(st, sizeof st, FMT_DATETIME, fmt_datetime(teem));
 
 		/* Callback which might actually show the details */
@@ -632,6 +882,8 @@ thread_list(thread_list_f cb, void *cbdata) {
 
 		mfree(t, sizeof *t, "tmpthread");
 	}
+
+	list_destroy(&tl);
 
 	return (cnt);
 }
