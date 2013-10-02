@@ -12,7 +12,7 @@ buf_unlock(buf_t *buf) {
 
 bool
 buf_init(buf_t *buf) {
-	log_dbg( "(%p)", (void *)buf);
+	log_dbg("(%p)", (void *)buf);
 
 	/* Empty it out */
 	memzero(buf, sizeof *buf);
@@ -24,7 +24,7 @@ buf_init(buf_t *buf) {
 	buf->size = (4 * 1024);
 	buf->buf = (void *)calloc(1, buf->size);
 	if (buf->buf == NULL) {
-		log_dbg( "(%p)", (void *)buf);
+		log_dbg("(%p)", (void *)buf);
 		return (false);
 	}
 
@@ -38,7 +38,7 @@ buf_init(buf_t *buf) {
 /* Destroy the mutex, final cleanup */
 void
 buf_destroy(buf_t *buf) {
-	log_dbg( "(%p)", (void *)buf);
+	log_dbg("(%p)", (void *)buf);
 
 	if (buf->buf)
 		free(buf->buf);
@@ -119,7 +119,7 @@ buf_willfit(buf_t *buf, unsigned int len) {
 	/* Get more memory */
 	b = realloc(buf->buf, ns);
 	if (!b) {
-		log_err( "Out of memory (%" PRIu64 ")", ns);
+		log_err("Out of memory (%" PRIu64 ")", ns);
 		fassert(false);
 		return (false);
 	}

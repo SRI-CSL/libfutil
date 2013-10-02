@@ -6,9 +6,9 @@
 #define LC(x) x
 #if 0 /* LD in our out */
 #if 1 /* destination: log or stderr */
-#define LD(t,a) log_dbg( t, a)
-#define LD2(t,a,b) log_dbg( t, a, b)
-#define LD3(t,a,b,c) log_dbg( t, a, b, c)
+#define LD(t,a) log_dbg(t, a)
+#define LD2(t,a,b) log_dbg(t, a, b)
+#define LD3(t,a,b,c) log_dbg(t, a, b, c)
 #else
 #define LD(t,a) fprintf(stderr, "%s: " t "\n", __func__ a)
 #define LD2(t,a,b) fprintf(stderr, "%s: " t "\n", __func__ a, b)

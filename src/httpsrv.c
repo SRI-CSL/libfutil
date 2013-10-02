@@ -43,7 +43,7 @@ httpsrv_methodname(unsigned int method) {
 	fassert(HTTP_M_MAX == lengthof(http_methods));
 
 	if (method >= lengthof(http_methods)) {
-		log_crt( "Unknown HTTP method '%u'", method);
+		log_crt("Unknown HTTP method '%u'", method);
 		return ("<UNKNOWN>");
 	}
 
@@ -1085,12 +1085,12 @@ httpsrv_newcl(httpsrv_t *hs) {
 
 	mutex_lock(hs->mutex);
 
-	log_dbg( "[hs%" PRIu64 "]", hs->id);
+	log_dbg("[hs%" PRIu64 "]", hs->id);
 
 	/* Create a cl session */
 	hcl = mcalloc(sizeof *hcl, "httpsrv_client_t");
 	if (hcl == NULL) {
-		log_crt( "[hs%" PRIu64 "] alloc failed", hs->id);
+		log_crt("[hs%" PRIu64 "] alloc failed", hs->id);
 		mutex_unlock(hs->mutex);
 		return (NULL);
 	}
@@ -1113,7 +1113,7 @@ httpsrv_newcl(httpsrv_t *hs) {
 
 		r = httpsrv_client_close(hcl, true);
 		if (!r) {
-			log_err( "Could not close new HCL (conn)");
+			log_err("Could not close new HCL (conn)");
 		}
 
 		mutex_unlock(hs->mutex);
@@ -1128,7 +1128,7 @@ httpsrv_newcl(httpsrv_t *hs) {
 
 		r = httpsrv_client_close(hcl, true);
 		if (!r) {
-			log_err( "Could not close new HCL (buf)");
+			log_err("Could not close new HCL (buf)");
 		}
 
 		mutex_unlock(hs->mutex);
@@ -1232,11 +1232,11 @@ httpsrv_poller_thread(void *context) {
 	httpsrv_t	*hs = (httpsrv_t *)context;
 	int		r;
 
-	log_dbg( "[hs%" PRIu64 "] - start", hs->id);
+	log_dbg("[hs%" PRIu64 "] - start", hs->id);
 
 	/* Handle the sockets in the global connset by polling them */
 	while (thread_keep_running()) {
-		/* log_dbg( "[hs%" PRIu64 "]", hs->id); */
+		/* log_dbg("[hs%" PRIu64 "]", hs->id); */
 		r = connset_poll(&hs->connset);
 		if (r < 0) {
 			log_ntc(
@@ -1246,7 +1246,7 @@ httpsrv_poller_thread(void *context) {
 		}
 	}
 
-	log_dbg( "[hs%" PRIu64 "] exiting", hs->id);
+	log_dbg("[hs%" PRIu64 "] exiting", hs->id);
 	return (NULL);
 }
 
@@ -1265,13 +1265,13 @@ httpsrv_mimetype(const char *file) {
 
 	/* No extension? */
 	if (l == i) {
-		log_dbg( "%s has no extension?", file);
+		log_dbg("%s has no extension?", file);
 		return (mime);
 	}
 
 	ext = &file[i+1];
 
-	log_dbg( "%s has extension: %s", file, ext);
+	log_dbg("%s has extension: %s", file, ext);
 
 	/* Compare the extension */
 	if (strcmp(ext, "css") == 0)
@@ -1287,7 +1287,7 @@ httpsrv_mimetype(const char *file) {
 	else if (strcmp(ext, "png") == 0)
 		mime = HTTPSRV_CTYPE_PNG;
 
-	log_dbg( "%s has mime-type: %s", file, mime);
+	log_dbg("%s has mime-type: %s", file, mime);
 
 	return (mime);
 }
@@ -1337,7 +1337,7 @@ httpsrv_worker_thread(void *context) {
 	httpsrv_client_t	*hcl;
 	bool			k;
 
-	log_dbg( "[hs%" PRIu64 "] context", hs->id);
+	log_dbg("[hs%" PRIu64 "] context", hs->id);
 
 	while (thread_keep_running()) {
 
@@ -1448,7 +1448,7 @@ httpsrv_worker_thread(void *context) {
 		}
 	}
 
-	log_dbg( "exiting");
+	log_dbg("exiting");
 
 	return (NULL);
 }
@@ -1581,11 +1581,11 @@ httpsrv_exit(httpsrv_t *hs) {
 	fassert(hs);
 	fassert(hs->id != 0);
 
-	log_dbg( "[hs%" PRIu64 "]", hs->id);
+	log_dbg("[hs%" PRIu64 "]", hs->id);
 
 	/* Cleanup all open sessions */
 	while ((hcl = (httpsrv_client_t *)list_pop(&hs->sessions))) {
-		log_dbg( HCL_ID " " CONN_ID " exiting",
+		log_dbg(HCL_ID " " CONN_ID " exiting",
 			hcl->id, conn_id(&hcl->conn));
 		httpsrv_client_close(hcl, true);
 	}
@@ -1622,7 +1622,7 @@ httpsrv_init(	httpsrv_t *hs,
 
 	/* New Id */
 	hs->id = ++httpsrv_id;
-	log_dbg( "[hs%" PRIu64 "]", hs->id);
+	log_dbg("[hs%" PRIu64 "]", hs->id);
 
 	/* The lock */
 	mutex_init(hs->mutex);
@@ -1657,20 +1657,20 @@ httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned i
 	/* Listen on the HTTP port (forwarded to from mod_hs) */
 	if (!conn_create_listen(&hs->connset,
 				hostname, IPPROTO_TCP, port)) {
-		log_err( "conn_create_listen()");
+		log_err("conn_create_listen()");
 		return (false);
 	}
 
 	/* Launch a few HTTP worker threads */
 	for (i = 0; i < numworkers; i++) {
 		if (!thread_add("HTTPWorker", &httpsrv_worker_thread, hs)) {
-			log_err( "could not create thread");
+			log_err("could not create thread");
 			return (false);
 		}
 	}
 
 	if (!thread_add("HTTPPoller", &httpsrv_poller_thread, hs)) {
-		log_err( "could not create thread");
+		log_err("could not create thread");
 		return (false);
 	}
 

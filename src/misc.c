@@ -36,7 +36,7 @@ log_chown(uid_t uid, gid_t gid) {
 		r = fchown(fileno(l_log_output), uid, gid);
 
 		if (r != 0) {
-			log_err( "fchown() failed");
+			log_err("fchown() failed");
 		}
 	}
 	mutex_unlock(l_mutex);
@@ -601,7 +601,7 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 		/* Will it fit? */
 		if (len > map[i].len) {
 			/* During debugging we want to catch this */
-			log_dbg( "Won't fit! %u vs %u\n",
+			log_dbg("Won't fit! %u vs %u\n",
 				len, map[i].len);
 			fassert(false);
 			l = map[i].len;
@@ -680,7 +680,7 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	/* Open it */
 	f = fopen(dev, "r");
 	if (!f) {
-		log_err( "Could not open %s", dev);
+		log_err("Could not open %s", dev);
 		return;
 	}
 
@@ -705,7 +705,7 @@ generate_random_bytes(uint8_t *rnd, uint64_t size) {
 	}
 
 	if (!CryptGenRandom(hProvider, size, rnd)) {
-		log_err( "CryptGenRandom() failed");
+		log_err("CryptGenRandom() failed");
 	}
 
 	CryptReleaseContext(hProvider, 0);
@@ -1050,7 +1050,7 @@ inet_pton(int af, const char *src, void *dst) {
 	hints.ai_family = af;
 
 	if (getaddrinfo(src, NULL, &hints, &res) != 0) {
-		log_err( "Couldn't resolve host %s", src);
+		log_err("Couldn't resolve host %s", src);
 		return (-1);
 	}
 
@@ -1142,7 +1142,7 @@ aprintf(const char *format, ...) {
 	r = vsnprintf(NULL, 0, format, ap);
 	va_end(ap);
 	if (r <= 0) {
-		log_err( "First attempt failed");
+		log_err("First attempt failed");
 		return (NULL);
 	}
 
@@ -1151,7 +1151,7 @@ aprintf(const char *format, ...) {
 	
 	buf = mcalloc(size + sizeof size, "aprintf");
 	if (buf == NULL) {
-		log_crt( "Out of memory");
+		log_crt("Out of memory");
 		return (NULL);
 	}
 
@@ -1161,7 +1161,7 @@ aprintf(const char *format, ...) {
 
 	/* Second attempt failed or made it even bigger? */
 	if (!snprintfok(r, size)) {
-		log_err( "Second attempt failed");
+		log_err("Second attempt failed");
 		mfree(buf, size, "aprintf");
 		return (NULL);
 	}
