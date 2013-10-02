@@ -119,7 +119,7 @@ connset_init(connset_t *cs) {
 
 	/* The pipes should be non-blocking */
 	if (fcntl(cs->pipe[0], F_SETFL, O_NONBLOCK) == -1) {
-		log_err( "fcntl(pipe) failed");
+		log_err("fcntl(pipe) failed");
 		return (false);
 	}
 
@@ -247,7 +247,7 @@ connset_poll(connset_t *cs) {
 #endif
 
 	while (true) {
-		/* log_dbg( "..."); */
+		/* log_dbg("..."); */
 		connset_lock(cs);
 
 		/* What we want to check */
@@ -256,13 +256,13 @@ connset_poll(connset_t *cs) {
 		memcpy(&fd_w, &cs->fd_write, sizeof fd_w);
 
 #ifdef POLLDEBUG
-		log_dbg( "Pre-select:");
+		log_dbg("Pre-select:");
 
 		for (i = 0; i < hifd; i++) {
 			if (FD_ISSET(i, &fd_r))
-				log_dbg( "   read: " SOCK_ID, i);
+				log_dbg("   read: " SOCK_ID, i);
 			if (FD_ISSET(i, &fd_w))
-				log_dbg( "   write: " SOCK_ID, i);
+				log_dbg("   write: " SOCK_ID, i);
 		}
 
 		connset_poll_list("act", &cs->active,	&fd_r, &fd_w);
@@ -302,7 +302,7 @@ connset_poll(connset_t *cs) {
 		}
 
 		connset_lock(cs);
-		log_dbg( "select() = %u (sec = %" PRIu64 ".%03" PRIu64 ", triggers = %" PRIu64 ")", i, b_s - a_s, d, cs->triggers);
+		log_dbg("select() = %u (sec = %" PRIu64 ".%03" PRIu64 ", triggers = %" PRIu64 ")", i, b_s - a_s, d, cs->triggers);
 		connset_unlock(cs);
 #endif
 		thread_setstate(thread_state_running);
@@ -310,17 +310,17 @@ connset_poll(connset_t *cs) {
 		if (i < 0) {
 			/* Ignore signals */
 			if (errsv == EINTR) {
-				log_ntc( "Select Interrupted");
+				log_ntc("Select Interrupted");
 			} else if (errsv == EBADF) {
 				/*
 				 * As we are multi-threaded a
 				 * socket might disappear while we are
 				 * checking it
 				 */
-				log_ntc( "Bad Filedescriptor");
+				log_ntc("Bad Filedescriptor");
 				continue;
 			} else {
-				log_err( "Select Failed");
+				log_err("Select Failed");
 			}
 
 			return (-1);
@@ -328,7 +328,7 @@ connset_poll(connset_t *cs) {
 
 		/* Timeout or needing to stop running? */
 		if (i == 0 || !thread_keep_running()) {
-			/* log_dbg( "Timeout"); */
+			/* log_dbg("Timeout"); */
 			break;
 		}
 
@@ -531,7 +531,7 @@ conn_ssl_err(conn_t *conn, const char *format, ...) {
 	ERR_error_string_n(ERR_get_error(), err, sizeof err);
 	vsnprintf(msg, sizeof msg, format, ap);
 
-	log_wrn( CONN_ID " SSL Error: %s :: %s (%u / %s)",
+	log_wrn(CONN_ID " SSL Error: %s :: %s (%u / %s)",
 		conn_id(conn), msg, err, se,
 		se == SSL_ERROR_WANT_READ ?	"Want Read" :
 		se == SSL_ERROR_WANT_WRITE ?	"Want Write" :
@@ -549,14 +549,14 @@ conn_ssl_psk_server_cb(SSL *ssl, const char *identity,
 	int		ret;
 	BIGNUM		*bn = NULL;
 
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID "", conn_id(conn));
 
 	/* Required to be there */
 	fassert(conn->ssl_psk_id != NULL);
 	fassert(conn->ssl_psk_key != NULL);
 
 	if (!identity) {
-		log_ntc( CONN_ID " client did not send PSK identity",
+		log_ntc(CONN_ID " client did not send PSK identity",
 			conn_id(conn));
 		return (0);
 	}
@@ -576,7 +576,7 @@ conn_ssl_psk_server_cb(SSL *ssl, const char *identity,
 		return (0);
 	}
 
-	log_dbg( CONN_ID " PSK client identity found", conn_id(conn));
+	log_dbg(CONN_ID " PSK client identity found", conn_id(conn));
 
 	/* convert the PSK key to binary */
 	ret = BN_hex2bn(&bn, conn->ssl_psk_key);
@@ -629,12 +629,12 @@ conn_ssl_psk_client_cb(SSL *ssl, const char *hint, char *identity,
 	int		n;
 	BIGNUM		*bn = NULL;
 
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID "", conn_id(conn));
 	if (!hint) {
 		log_dbg(
 			CONN_ID " NULL PSK identity hint", conn_id(conn));
 	} else {
-		log_dbg( CONN_ID " PSK identity hint \"%s\"",
+		log_dbg(CONN_ID " PSK identity hint \"%s\"",
 			conn_id(conn), hint);
 	}
 
@@ -667,7 +667,7 @@ conn_ssl_psk_client_cb(SSL *ssl, const char *hint, char *identity,
 
 	if ((unsigned int)BN_num_bytes(bn) > max_psk_len)
 	{
-		log_err( CONN_ID " psk buffer of callback is too "
+		log_err(CONN_ID " psk buffer of callback is too "
 			" small (%u) for key (%d)",
 			conn_id(conn), max_psk_len, BN_num_bytes(bn));
 		BN_free(bn);
@@ -678,11 +678,11 @@ conn_ssl_psk_client_cb(SSL *ssl, const char *hint, char *identity,
 	BN_free(bn);
 
 	if (psk_len == 0) {
-		log_err( CONN_ID " psk_len = %u", conn_id(conn), psk_len);
+		log_err(CONN_ID " psk_len = %u", conn_id(conn), psk_len);
 		return (0);
 	}
 
-	log_dbg( CONN_ID " Created PSK len = %u", conn_id(conn), psk_len);
+	log_dbg(CONN_ID " Created PSK len = %u", conn_id(conn), psk_len);
 	return (psk_len);
 }
 
@@ -1007,7 +1007,7 @@ conn_ssl_msg_cb(int write_p, int version, int content_type,
 		}
 	}
 
-	log_dbg( CONN_ID " %s %s%s [length %04lx]%s%s\n",
+	log_dbg(CONN_ID " %s %s%s [length %04lx]%s%s\n",
 		conn_id(conn), str_write_p, str_version, str_content_type,
 		(unsigned long)len, str_details1, str_details2);
 
@@ -1033,7 +1033,7 @@ conn_ssl_msg_cb(int write_p, int version, int content_type,
 
 void
 conn_ssl_cleanup(SSL_CTX *ssl_ctx) {
-	log_dbg( "...");
+	log_dbg("...");
 
 	if (ssl_ctx) {
 		SSL_CTX_free(ssl_ctx);
@@ -1058,10 +1058,10 @@ conn_ssl_init(bool serverside) {
 	SSL_CTX			*ctx;
 	const SSL_METHOD	*m;
 
-	log_dbg( "...");
+	log_dbg("...");
 
 	if (!initialized) {
-		log_dbg( "Initializing SSL");
+		log_dbg("Initializing SSL");
 		SSL_library_init();
 		SSL_load_error_strings();
 		OpenSSL_add_ssl_algorithms();
@@ -1129,7 +1129,7 @@ conn_set_state(conn_t *conn, connstate_t state) {
 
 	st = state < lengthof(states) ? states[state] : "?UNKNOWN!";
 
-	log_dbg( CONN_ID " is now %s", conn_id(conn), st);
+	log_dbg(CONN_ID " is now %s", conn_id(conn), st);
 #endif
 
 	conn->state = state;
@@ -1166,7 +1166,7 @@ conn_init(conn_t *conn, void *clientdata)
 
 	/* Give it a number we can remember */
 	conn->id = ++conn_id;
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg(CONN_ID, conn_id(conn));
 
 	node_init(&conn->node);
 	mutex_init(conn->mutex);
@@ -1306,7 +1306,7 @@ conn_eventsA(conn_t *conn, uint16_t events) {
 	/* They match now */
 	conn->wntevents = events;
 
-	log_dbg( CONN_ID " events are now: %s %s, list: %s",
+	log_dbg(CONN_ID " events are now: %s %s, list: %s",
 		conn_id(conn),
 		conn_wnt_in(conn)	? "IN" : ".",
 		conn_wnt_out(conn)	? "OUT" : ".",
@@ -1395,12 +1395,12 @@ conn_set_connset(conn_t *conn, connset_t *cs) {
 /* Destroy the connection, final cleanup */
 void
 conn_destroy(conn_t *conn) {
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg(CONN_ID, conn_id(conn));
 
 	/* Close the socket first if needed */
 	conn_close(conn);
 
-	log_dbg( CONN_ID " destroying buffers", conn_id(conn));
+	log_dbg(CONN_ID " destroying buffers", conn_id(conn));
 
 	buf_destroy(&conn->recv);
 	buf_destroy(&conn->send);
@@ -1419,7 +1419,7 @@ conn_destroy(conn_t *conn) {
 	mutex_destroy(conn->mutex);
 	node_destroy(&conn->node);
 
-	log_dbg( CONN_ID " gone", conn_id(conn));
+	log_dbg(CONN_ID " gone", conn_id(conn));
 
 	/* Clean her out */
 	memzero(conn, sizeof *conn);
@@ -1451,7 +1451,7 @@ static void
 connset_handling_setupL(conn_t *conn);
 static void
 connset_handling_setupL(conn_t *conn) {
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg(CONN_ID, conn_id(conn));
 
 	/* Clear the bits so that select() ignores them */
 	if (conn->wntevents & CONN_POLLIN) {
@@ -1492,7 +1492,7 @@ connset_handling_setupA(conn_t *conn) {
 
 void
 connset_handling_setup(conn_t *conn) {
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg(CONN_ID, conn_id(conn));
 
 	/* Lock her up */
 	conn_lock(conn);
@@ -1546,7 +1546,7 @@ connset_handling_done(conn_t *conn, bool keeplocked) {
 	/* Has to be one some list */
 	fassert(conn->connset_l != NULL);
 
-	log_dbg( CONN_ID " (kh=%s)", conn_id(conn), yesno(keeplocked));
+	log_dbg(CONN_ID " (kh=%s)", conn_id(conn), yesno(keeplocked));
 
 	/* Lock it */
 	conn_lock(conn);
@@ -1618,7 +1618,7 @@ conn_close(conn_t *conn) {
 
 	/* Already closed? */
 	if (conn->sock == INVALID_SOCKET) {
-		log_dbg( CONN_ID " Already closed", conn_id(conn));
+		log_dbg(CONN_ID " Already closed", conn_id(conn));
 		conn_unlock(conn);
 		return;
 	}
@@ -1689,11 +1689,11 @@ conn_is_eofA(conn_t UNUSED *conn) {
 	char	buf[2];
 	bool	ret;
 
-	log_dbg( CONN_ID " checking for EOF", conn_id(conn));
+	log_dbg(CONN_ID " checking for EOF", conn_id(conn));
 
 	/* Async sockets will receive EOF at poll() time */
 	if (conn->connset != NULL) {
-		log_dbg( CONN_ID " checking for EOF (async)", conn_id(conn));
+		log_dbg(CONN_ID " checking for EOF (async)", conn_id(conn));
 		return (false);
 	}
 
@@ -1703,7 +1703,7 @@ conn_is_eofA(conn_t UNUSED *conn) {
 	/* Are we still connected? */
 	ret = (r <= 0 && errno == ENOTCONN);
 
-	log_dbg( CONN_ID " checking for EOF (%s)", conn_id(conn),yesno(ret));
+	log_dbg(CONN_ID " checking for EOF (%s)", conn_id(conn),yesno(ret));
 
 	return (ret);
 #endif
@@ -1730,18 +1730,18 @@ conn_ssl_flush(conn_t *conn) {
 
 	fassert(conn_is_valid(conn));
 
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID "", conn_id(conn));
 
 	/* Nothing to do? */
 	if (!conn->ssl || conn->ssl_out_len == 0) {
-		log_dbg( CONN_ID " nothing to do", conn_id(conn));
+		log_dbg(CONN_ID " nothing to do", conn_id(conn));
 		return (true);
 	}
 
 	/* Send the crypted bits over the wire */
 	r = send(conn->sock, conn->ssl_out, conn->ssl_out_len, MSG_NOSIGNAL);
 	if (r <= -1) {
-		log_ntc( CONN_ID " ERR %" PRId64 " (SSL)",
+		log_ntc(CONN_ID " ERR %" PRId64 " (SSL)",
 			conn_id(conn), r);
 		return (false);
 	}
@@ -1770,7 +1770,7 @@ conn_ssl_flush(conn_t *conn) {
 
 	/* Done writing all our SSL data */
 	conn->ssl_out_len = 0;
-	log_dbg( CONN_ID " done %" PRIu64, conn_id(conn), r);
+	log_dbg(CONN_ID " done %" PRIu64, conn_id(conn), r);
 
 	return (true);
 }
@@ -1781,7 +1781,7 @@ static void
 conn_ssl_bio_write(conn_t *conn) {
 	int rc;
 
-	log_dbg( CONN_ID " in: %u", conn_id(conn), conn->ssl_in_len);
+	log_dbg(CONN_ID " in: %u", conn_id(conn), conn->ssl_in_len);
 
 	/*
 	 * socket -> ssl_in[c] - BIO_write -> SSL_read -> data[p];
@@ -1790,7 +1790,7 @@ conn_ssl_bio_write(conn_t *conn) {
 	 * thus write towards OpenSSL which can then decrypt it
 	 */
 	rc = BIO_write(conn->ssl_bio_in, &conn->ssl_in, conn->ssl_in_len);
-	log_dbg( CONN_ID " BIO_write = %d", conn_id(conn), rc);
+	log_dbg(CONN_ID " BIO_write = %d", conn_id(conn), rc);
 
 	/*
 	 * The return code includes the amount of data written by OpenSSL
@@ -1819,11 +1819,11 @@ conn_ssl_bio_write(conn_t *conn) {
 		 * If we connect, we simply let the loop handle it
 		 */
 		if (conn->last_connect == 0) {
-			log_dbg( "Attempting SSL Handshake");
+			log_dbg("Attempting SSL Handshake");
 			rc = SSL_do_handshake(conn->ssl);
 		}
 	} else {
-		log_dbg( "Attempting SSL Read");
+		log_dbg("Attempting SSL Read");
 		buf_lock(&conn->recv);
 		rc = SSL_read(conn->ssl, buf_bufend(&conn->recv),
 			      conn_buffer_left(conn));
@@ -1850,7 +1850,7 @@ static void
 conn_ssl_bio_read(conn_t *conn) {
 	int rc;
 
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID "", conn_id(conn));
 
 	/*
 	 * data[p] -> SSL_write() -> BIO_read -> ssl_out[c] -> socket
@@ -1863,7 +1863,7 @@ conn_ssl_bio_read(conn_t *conn) {
 	rc = BIO_read(conn->ssl_bio_out,
 		       &conn->ssl_out[conn->ssl_out_len],
 		       sizeof conn->ssl_out - conn->ssl_out_len);
-	log_dbg( CONN_ID " BIO_read = %d", conn_id(conn), rc);
+	log_dbg(CONN_ID " BIO_read = %d", conn_id(conn), rc);
 	if (rc > 0) {
 		/* We got data that needs flushing */
 		conn->ssl_out_len += rc;
@@ -1881,14 +1881,14 @@ conn_ssl_bio(conn_t *conn);
 static void
 conn_ssl_bio(conn_t *conn) {
 
-	log_dbg( CONN_ID ", ...", conn_id(conn));
+	log_dbg(CONN_ID ", ...", conn_id(conn));
 
 	conn_ssl_bio_write(conn);
 	conn_ssl_bio_read(conn);
 
 	buf_lock(&conn->recv);
 	buf_lock(&conn->send);
-	log_dbg( CONN_ID " in: %u/%u, out: %u/%u",
+	log_dbg(CONN_ID " in: %u/%u, out: %u/%u",
 		conn_id(conn),
 		conn->ssl_in_len, (unsigned int)buf_cur(&conn->recv),
 		conn->ssl_out_len, (unsigned int)buf_cur(&conn->send));
@@ -1931,7 +1931,7 @@ conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
 		break;
 	}
 
-	log_dbg( CONN_ID " oper = %u / %s ret: %ld, %s %s",
+	log_dbg(CONN_ID " oper = %u / %s ret: %ld, %s %s",
 		conn_id(conn), oper, op, retvalue,
 		(b == conn->ssl_bio_in  ? "IN"  : ".."),
 		(b == conn->ssl_bio_out ? "OUT" : "..."));
@@ -1940,7 +1940,7 @@ conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
 	conn_ssl_flush(conn);
 
 	if (oper == BIO_CB_READ && b == conn->ssl_bio_in) {
-		log_dbg( CONN_ID " Attempting BIO Write", conn_id(conn));
+		log_dbg(CONN_ID " Attempting BIO Write", conn_id(conn));
 		conn_ssl_bio_write(conn);
 	}
 
@@ -1948,7 +1948,7 @@ conn_ssl_bio_cb(BIO *b, int oper, const char UNUSED *argp,
 		b == conn->ssl_bio_out) {
 
 		/* Read a bit */
-		log_dbg( CONN_ID " Attempting BIO Read", conn_id(conn));
+		log_dbg(CONN_ID " Attempting BIO Read", conn_id(conn));
 		conn_ssl_bio_read(conn);
 	}
 
@@ -2023,7 +2023,7 @@ conn_recvA(conn_t *conn) {
 
 #ifdef CONN_SSL
 	if (conn->ssl) {
-		log_dbg( CONN_ID " ssl received %" PRIu64, conn_id(conn), r);
+		log_dbg(CONN_ID " ssl received %" PRIu64, conn_id(conn), r);
 		conn->ssl_in_len += r;
 
 		conn_ssl_bio(conn);
@@ -2050,7 +2050,7 @@ conn_recvA(conn_t *conn) {
 	*buf_bufend(&conn->recv) = '\0';
 
 	/* Return the amount  bytes in the buffer */
-	log_dbg( CONN_ID " return %" PRIu64,
+	log_dbg(CONN_ID " return %" PRIu64,
 		conn_id(conn), buf_cur(&conn->recv));
 
 	len = buf_cur(&conn->recv);
@@ -2076,7 +2076,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 	uint64_t	len;
 	int		i;
 
-	log_dbg( CONN_ID, conn_id(conn));
+	log_dbg(CONN_ID, conn_id(conn));
 
 	conn_lock(conn);
 
@@ -2181,7 +2181,7 @@ conn_recvline(conn_t *conn, char *buf, unsigned int buflen) {
 		}
 	}
 
-	log_dbg( CONN_ID " nothing", conn_id(conn));
+	log_dbg(CONN_ID " nothing", conn_id(conn));
 
 	buf_unlock(&conn->recv);
 	conn_unlock(conn);
@@ -2212,7 +2212,7 @@ static bool
 conn_ssl_send(conn_t *conn, const char *buf, uint64_t *len) {
 	int	rc;
 
-	log_dbg( CONN_ID " %u", conn_id(conn), (unsigned int)*len);
+	log_dbg(CONN_ID " %u", conn_id(conn), (unsigned int)*len);
 
 	/* Check if the BIOs need attention */
 	conn_ssl_bio(conn);
@@ -2227,7 +2227,7 @@ conn_ssl_send(conn_t *conn, const char *buf, uint64_t *len) {
 	}
 
 	if ((unsigned int)rc != *len) {
-		log_dbg( CONN_ID " SSL_write %u/%u",
+		log_dbg(CONN_ID " SSL_write %u/%u",
 			conn_id(conn), rc, (unsigned int)*len);
 	}
 
@@ -2251,7 +2251,7 @@ conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
 	uint64_t	written = 0;
 	int		i;
 
-	log_dbg( CONN_ID "", conn_id(conn));
+	log_dbg(CONN_ID "", conn_id(conn));
 
 	for (i = 0; i < nvec; i++) {
 		uint64_t rd = vec[i].iov_len;
@@ -2270,7 +2270,7 @@ conn_ssl_sendv(conn_t *conn, const struct iovec *vec,
 
 	*len = written;
 
-	log_dbg( CONN_ID " wrote %" PRIu64, conn_id(conn), *len);
+	log_dbg(CONN_ID " wrote %" PRIu64, conn_id(conn), *len);
 
 	return (true);
 }
@@ -2494,7 +2494,7 @@ conn_flush(conn_t *conn) {
 	if (!conn_ssl_flush(conn)) {
 		/* Still need to flush the SSL buffer */
 		/* Thus don't do anything else here yet */
-		log_dbg( CONN_ID " SSL flush needed", conn_id(conn));
+		log_dbg(CONN_ID " SSL flush needed", conn_id(conn));
 		buf_unlock(&conn->send_headers);
 		buf_unlock(&conn->send);
 		conn_unlock(conn);
@@ -2503,7 +2503,7 @@ conn_flush(conn_t *conn) {
 #endif /* CONN_SSL */
 
 	if (!conn_is_connected(conn) || conn_is_eofA(conn)) {
-		log_dbg( CONN_ID " not connected", conn_id(conn));
+		log_dbg(CONN_ID " not connected", conn_id(conn));
 		buf_unlock(&conn->send_headers);
 		buf_unlock(&conn->send);
 		conn_unlock(conn);
@@ -2523,7 +2523,7 @@ conn_flush(conn_t *conn) {
 		if (conn->sendfile_len != 0) {
 			ret = conn_flush_sendfile(conn);
 		} else {
-			log_dbg( CONN_ID " nothing to flush", conn_id(conn));
+			log_dbg(CONN_ID " nothing to flush", conn_id(conn));
 
 			/* Nothing to flush thus continue polling for incoming */
 			conn_eventsA(conn, CONN_POLLIN);
@@ -2567,7 +2567,7 @@ conn_flush(conn_t *conn) {
 			}
 
 			if (conn->real_contentlen != 0) {
-				log_dbg( CONN_ID
+				log_dbg(CONN_ID
 					" Real Content-Length: %" PRIu64,
 					conn_id(conn), conn->real_contentlen);
 			}
@@ -2595,9 +2595,9 @@ conn_flush(conn_t *conn) {
 			conn_id(conn),
 			len_h,
 			strlen(buf_buffer(&conn->send_headers)));
-		log_dbg( "8<-----------");
-		log_dbg( "%s", buf_buffer(&conn->send_headers));
-		log_dbg( "----------->8");
+		log_dbg("8<-----------");
+		log_dbg("%s", buf_buffer(&conn->send_headers));
+		log_dbg("----------->8");
 
 		/* The chunks to send */
 		iovec[0].iov_base = buf_buffer(&conn->send_headers);
@@ -2608,7 +2608,7 @@ conn_flush(conn_t *conn) {
 		/* Sometimes we do not have content thus we skip that one */
 		iolen = iovec[1].iov_len > 0 ? 2 : 1;
 
-		log_dbg( CONN_ID " Flushing %" PRIu64 " (h)",
+		log_dbg(CONN_ID " Flushing %" PRIu64 " (h)",
 			conn_id(conn), len);
 
 #ifdef CONN_SSL
@@ -2625,7 +2625,7 @@ conn_flush(conn_t *conn) {
 #endif
 	} else {
 		wlen = len_b;
-		log_dbg( CONN_ID " Flushing %" PRIu64, conn_id(conn), len);
+		log_dbg(CONN_ID " Flushing %" PRIu64, conn_id(conn), len);
 
 #ifdef CONN_SSL
 		if (conn->ssl) {
@@ -2665,7 +2665,7 @@ conn_flush(conn_t *conn) {
 	}
 
 	if (wlen == len) {
-		log_dbg( CONN_ID " Written all", conn_id(conn));
+		log_dbg(CONN_ID " Written all", conn_id(conn));
 
 		/* Nothing further to send */
 		buf_empty(&conn->send);
@@ -2675,7 +2675,7 @@ conn_flush(conn_t *conn) {
 		if (conn->sendfile_len != 0) {
 			ret = conn_flush_sendfile(conn);
 		} else {
-			log_dbg( CONN_ID " nothing to flush", conn_id(conn));
+			log_dbg(CONN_ID " nothing to flush", conn_id(conn));
 
 			/* Nothing to flush thus continue polling for incoming */
 			conn_eventsA(conn, CONN_POLLIN);
@@ -2794,7 +2794,7 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 	ret = buf_putl(&conn->send, txt, len);
 
 	if (ret) {
-		log_dbg( CONN_ID ": %u", conn_id(conn), len);
+		log_dbg(CONN_ID ": %u", conn_id(conn), len);
 
 		dumppacket(	LOG_DEBUG,
 				(uint8_t *)&buf_buffer(&conn->send)[cur],
@@ -2873,7 +2873,7 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 	ret = buf_vprintf(&conn->send, fmt, ap);
 
 	if (ret) {
-		log_dbg( CONN_ID "", conn_id(conn));
+		log_dbg(CONN_ID "", conn_id(conn));
 
 		dumppacket(	LOG_DEBUG,
 				(uint8_t *)&buf_buffer(&conn->send)[cur],
@@ -2942,7 +2942,7 @@ conn_create_listen(connset_t *connset,
 
 	n = getaddrinfo(hostname, service, &hints, &res);
 	if (n < 0) {
-		log_ntc( "getaddrinfo() failed: %s", gai_strerror(n));
+		log_ntc("getaddrinfo() failed: %s", gai_strerror(n));
 		return (false);
 	}
 
@@ -2994,7 +2994,7 @@ conn_create_listen(connset_t *connset,
 				    listen(sock, LISTEN_QUEUE) == 0) {
 					inet_rtop(res, buf, sizeof buf);
 
-					log_dbg( "Listening on %s",
+					log_dbg("Listening on %s",
 						buf);
 
 					conn = (conn_t *)mcalloc(sizeof *conn,
@@ -3048,7 +3048,7 @@ conn_create_listen(connset_t *connset,
 		if (errfunc) {
 			inet_rtop(res, buf, sizeof buf);
 
-			log_ntc( "Couldn't %s() on %s", errfunc, buf);
+			log_ntc("Couldn't %s() on %s", errfunc, buf);
 
 			/* Make sure we close it */
 			if (sock != INVALID_SOCKET) {
@@ -3108,7 +3108,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 
 	if (n < 0)
 	{
-		log_ntc( "\"%s\":\"%s\" - getaddrinfo error: [%s]",
+		log_ntc("\"%s\":\"%s\" - getaddrinfo error: [%s]",
 			hostname, service, gai_strerror(n));
 		conn_unlock(conn);
 		return (false);
@@ -3120,7 +3120,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 		/* Get a human readable string */
 		inet_rtop(res, buf, sizeof buf);
 
-		log_dbg( "Attempting connect to %s:%u:%u (%s)",
+		log_dbg("Attempting connect to %s:%u:%u (%s)",
 					hostname, protocol, port, buf);
 
 		conn->sock = socket(res->ai_family,
@@ -3131,7 +3131,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 			            res->ai_protocol);
 
 		if (conn->sock != INVALID_SOCKET) {
-			log_dbg( "Socket " SOCK_ID,
+			log_dbg("Socket " SOCK_ID,
 				conn_sock(conn));
 #ifndef SOCK_CLOEXEC
 #ifdef FD_CLOEXEC
@@ -3158,7 +3158,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 				(connset && n == -1 && errno == EINPROGRESS))
 			{
 				/* Connected */
-				log_dbg( "Connected (%s:%u:%u)%s",
+				log_dbg("Connected (%s:%u:%u)%s",
 					hostname, protocol, port,
 					n == 0 ? "" : " [still trying]");
 
@@ -3185,7 +3185,7 @@ conn_create_connection(conn_t *conn, const char *hostname,
 				conn->sock = INVALID_SOCKET;
 			}
 		} else {
-			log_err( "Couldn't get a socket for %s", buf);
+			log_err("Couldn't get a socket for %s", buf);
 		}
 
 		res = res->ai_next;
@@ -3239,7 +3239,7 @@ conn_accept(conn_t *conn, conn_t *lconn, void *clientdata) {
 	conn_unlock(lconn);
 
 	if (conn->sock == INVALID_SOCKET) {
-		log_err( CONN_ID " failed accept", conn_id(conn));
+		log_err(CONN_ID " failed accept", conn_id(conn));
 		conn_unlock(conn);
 		return (false);
 	}
@@ -3310,7 +3310,7 @@ conn_getinfo(conn_t *conn, bool local, char *hostname, unsigned int hlen,
 	else
 		r = getpeername(conn->sock, (struct sockaddr *)&ss, &sslen);
 	if (r != 0) {
-		log_wrn( CONN_ID " could not get%sname",
+		log_wrn(CONN_ID " could not get%sname",
 			conn_id(conn), local ? "sock" : "peer");
 		return (false);
 	}
@@ -3331,7 +3331,7 @@ conn_getinfo(conn_t *conn, bool local, char *hostname, unsigned int hlen,
 		break;
 
 	default:
-		log_crt( CONN_ID " Unsupported AF %u",
+		log_crt(CONN_ID " Unsupported AF %u",
 			conn_id(conn), ss.ss_family);
 		return (false);
 		break;
@@ -3356,7 +3356,7 @@ conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
 
 	conn->ssl = SSL_new(ssl_ctx);
 	if (!conn->ssl) {
-		log_err( CONN_ID " SSL_new() failed", conn_id(conn));
+		log_err(CONN_ID " SSL_new() failed", conn_id(conn));
 		return (false);
 	}
 
@@ -3365,7 +3365,7 @@ conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
 
 	conn->ssl_bio_in = BIO_new(BIO_s_mem());
 	if (!conn->ssl_bio_in) {
-		log_err( CONN_ID " BIO_new(in) failed", conn_id(conn));
+		log_err(CONN_ID " BIO_new(in) failed", conn_id(conn));
 		return (false);
 	}
 	BIO_set_nbio(conn->ssl_bio_in, 1);
@@ -3374,7 +3374,7 @@ conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
 
 	conn->ssl_bio_out = BIO_new(BIO_s_mem());
 	if (!conn->ssl_bio_out) {
-		log_err( CONN_ID " BIO_new(out) failed", conn_id(conn));
+		log_err(CONN_ID " BIO_new(out) failed", conn_id(conn));
 		return (false);
 	}
 	BIO_set_nbio(conn->ssl_bio_out, 1);
@@ -3392,7 +3392,7 @@ conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
 		int se;
 		unsigned int loops = 0;
 
-		log_dbg( CONN_ID " Attempting SSL Client Handshake",
+		log_dbg(CONN_ID " Attempting SSL Client Handshake",
 			conn_id(conn));
 
 		/* Do handshaky stuff */
