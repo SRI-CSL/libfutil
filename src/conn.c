@@ -2669,7 +2669,7 @@ conn_flush(conn_t *conn) {
 			conn_eventsA(conn, CONN_POLLIN);
 		}
 	} else {
-		log_ntc(
+		log_dbg(
 			CONN_ID " Written %" PRIu64 " of %" PRIu64,
 			conn_id(conn), wlen, len);
 
