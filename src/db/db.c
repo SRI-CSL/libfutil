@@ -62,7 +62,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 
 		/* Append it to the query */
 		if (sizeof q - ql <= l) {
-			log_err( "Line %u too long", linenum);
+			log_err("Line %u too long", linenum);
 			drep = DB_R_ERR;
 			break;
 		}
@@ -80,7 +80,7 @@ db_setupschema(const char *dbname, const char *dbuser, const char *schema)
 		drep = db_query(&db, &res, __func__, q);
 		db_query_finish(&db, &res);
 		if (drep != DB_R_OK) {
-			log_err( "Query(%s) failed (line: %u)",
+			log_err("Query(%s) failed (line: %u)",
 				q, linenum);
 			break;
 		}
@@ -113,7 +113,7 @@ db_result_initcolcache(dbres_t *result, const dbfield_t *fields,
 	for (c = 0; fields[c].type != DB_T_NONE; c++) {
 		colcache[c] = db_result_columnno(result, fields[c].name);
 		if (colcache[c] == -1) {
-			log_err( "Missing column %s, check the SQL",
+			log_err("Missing column %s, check the SQL",
 				fields[c].name);
 
 			/* We fail at the end thus showing all missing fields */

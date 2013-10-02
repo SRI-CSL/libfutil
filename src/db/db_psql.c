@@ -130,9 +130,9 @@ db_connect(dbconn_t *db) {
 	unsigned int	i, max = 3;
 
 	if (db->keeptrying) {
-		log_dbg( "(keep trying)"); 
+		log_dbg("(keep trying)"); 
 	} else {
-		log_dbg( "(maxtries = %u)", max);
+		log_dbg("(maxtries = %u)", max);
 	}
 
 	/* Already connected? (Should not come here then) */
@@ -143,7 +143,7 @@ db_connect(dbconn_t *db) {
 			break;
 
 		if (!thread_keep_running()) {
-			log_dbg( "Stop running");
+			log_dbg("Stop running");
 			break;
 		}
 
@@ -247,8 +247,8 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 	 */
 	if (result->res != NULL)
 	{
-		log_err( "Query still open: %s\n", db->q);
-		log_err( "New Query: %s\n", txt);
+		log_err("Query still open: %s\n", db->q);
+		log_err("New Query: %s\n", txt);
 		fabort();
 		return (DB_R_ERR);
 	}
@@ -459,7 +459,7 @@ db_query(dbconn_t *db, dbres_t *result, const char *caller,
 
 		/* If we got results, all is fine */
 		if (result->res == NULL) {
-			log_err( "Query(%s) - no result", db->q);
+			log_err("Query(%s) - no result", db->q);
 
 			/* Something funky, disconnect it */
 			PQfinish(db->conn);
@@ -962,13 +962,13 @@ db_setupA(dbconn_t *db, dbres_t *res) {
 	fclose(fo);
 
 	if (already) {
-		log_inf( "%s already ok", fold);
+		log_inf("%s already ok", fold);
 
 		/* Remove the new one as it has our line already */
 		unlink(fnew);
 	}
 	else {
-		log_inf( "Updating %s for permissions", fold);
+		log_inf("Updating %s for permissions", fold);
 
 		/* Replace it */
 		rename(fnew, fold);
