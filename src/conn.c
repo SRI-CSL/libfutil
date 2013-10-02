@@ -2644,8 +2644,20 @@ conn_flush(conn_t *conn) {
 	}
 
 	if (r <= -1) {
-		log_ntc( CONN_ID " Flushing error = %" PRIsizet,
+		/*
+		 * While this is an 'error', they just mean
+		 * the connection was closed while sending
+		 * and thus can be normally handled
+		 */
+#ifdef CONN_SSL
+		log_dbg(CONN_ID " %sFlush error = %" PRIsizet,
+			conn->ssl ? "SSL " : "",
 			conn_id(conn), r);
+#else
+		log_dbg(CONN_ID " Flush error = %" PRIsizet,
+			conn_id(conn), r);
+#endif
+
 		buf_unlock(&conn->send_headers);
 		buf_unlock(&conn->send);
 		conn_unlock(conn);
@@ -2706,6 +2718,7 @@ conn_flush(conn_t *conn) {
 	buf_unlock(&conn->send_headers);
 	buf_unlock(&conn->send);
 	conn_unlock(conn);
+
 	return (ret);
 }
 
