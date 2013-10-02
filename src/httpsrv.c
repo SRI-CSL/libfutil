@@ -1017,7 +1017,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 			h = hcl->headers.uri;
 			h = strchr(h, '/');
 			h = strchr(h+1, '/');
-			s = strchr(h+1, '/');
+			s = strchr(h+1, ' ');
 			if (s == NULL) {
 				log_ntc(
 					HCL_ID " " CONN_ID
@@ -1028,7 +1028,10 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 				return (false);
 			}
 
-			/* The hostname */
+			/*
+			 * Replace the Host: header as
+			 * they really wanted this site
+			 */
 			strncpy(hcl->headers.hostname,
 				h+1, (s - h) - 1);
 
