@@ -1097,8 +1097,11 @@ strerror_r(int errnum, char *strerrbuf, size_t buflen) {
 
 #endif /* _WIN32 */
 
-#if (__DARWIN_C_LEVEL < 200809L ||				\
-     (!defined(_DARWIN) && _XOPEN_SOURCE < 700 && _POSIX_C_SOURCE < 200809L))
+#if ((__DARWIN_C_LEVEL < 200809L ||		\
+	(!defined(_DARWIN) &&			\
+		_XOPEN_SOURCE < 700 &&		\
+		_POSIX_C_SOURCE < 200809L)) &&	\
+	defined(__USE_XOPEN2K8))
 char *stpncpy(char *dest, const char *src, size_t n) {
 	unsigned int i, j;
 

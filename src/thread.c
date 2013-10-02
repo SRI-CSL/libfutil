@@ -41,7 +41,7 @@ thread_unlock(mythread_t *t) {
 }
 
 void
-process_cmdline(const char * const argv[], char *cmdline, unsigned int len) {
+process_cmdline(char * const argv[], char *cmdline, unsigned int len) {
 	unsigned int	i, off, l;
 	char		*cur;
 
@@ -324,7 +324,7 @@ process_spawn(char *const argv[], const char *logfile) {
 #error "Not implemented"
 #endif
 	/* Get the full line */
-	process_cmdline((const char * const *)&argv[0], cmdline, sizeof cmdline);
+	process_cmdline(&argv[0], cmdline, sizeof cmdline);
 
 	/* Happens when we fail to execute, nothing we can do here */
 	log_err("execvp(%s) failed", cmdline);
@@ -341,7 +341,7 @@ process_list(process_list_f cb, void *cbdata) {
 	unsigned int	cnt = 0;
 	char		st[64], state[64];
 	hlist_t		pl;
-	time_t		tee;
+	time_t		tt;
 
 	list_init(&pl);
 
@@ -367,8 +367,8 @@ process_list(process_list_f cb, void *cbdata) {
 	/* Now, lockless, do the call backs */
 	list_for(&pl, p, pn, myprocess_t *) {
 		/* Format the start time */
-		tee = p->starttime;
-		localtime_r(&tee, &teem);
+		tt = p->starttime;
+		localtime_r(&tt, &teem);
 		snprintf(st, sizeof st, FMT_DATETIME, fmt_datetime(teem));
 
 		/* Use kill() to determine if it is still there */
@@ -877,7 +877,7 @@ thread_list(thread_list_f cb, void *cbdata) {
 	unsigned int	cnt = 0;
 	char		st[64];
 	hlist_t		tl;
-	time_t		tee;
+	time_t		tt;
 
 	list_init(&tl);
 
@@ -905,8 +905,8 @@ thread_list(thread_list_f cb, void *cbdata) {
 	/* Now, lockless, do the call backs */
 	list_for(&tl, t, tn, mythread_t *) {
 		/* Format the start time */
-		tee = t->starttime;
-		localtime_r(&tee, &teem);
+		tt = t->starttime;
+		localtime_r(&tt, &teem);
 		snprintf(st, sizeof st, FMT_DATETIME, fmt_datetime(teem));
 
 		/* Callback which might actually show the details */
