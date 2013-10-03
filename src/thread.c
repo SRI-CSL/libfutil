@@ -243,7 +243,9 @@ process_spawn(char *const argv[], const char *logfile) {
 	assert(l_threads != NULL);
 	assert(l_processes != NULL);
 
-	log_dbg("%s", argv[0]);
+	log_dbg("%s, logfile: %s",
+		argv[0],
+		logfile == NULL ? "(none)" : logfile);
 
 	/* Daemonize */
 	pid = fork();
@@ -308,6 +310,7 @@ process_spawn(char *const argv[], const char *logfile) {
 		logfile = NULL;
 	}
 
+	/* Didn't use a logfile, then close stdout/err */
 	if (logfile == NULL) {
 		/* Cleanup stdout/stderr */
 		if (freopen("/dev/null", "w", stdout)) {}
