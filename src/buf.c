@@ -17,7 +17,7 @@ buf_init(buf_t *buf) {
 	/* Empty it out */
 	memzero(buf, sizeof *buf);
 
-	/* Init the per-buf mutex (XXX: check success) */
+	/* Init the per-buf mutex */
 	mutex_init(buf->mutex);
 
 	/* Start with an initial size of 4 KiB */

@@ -42,16 +42,21 @@ typedef struct {
 	void		*arg;
 } mythread_t;
 
-bool thread_init(void);
+CHKRESULT bool thread_init(void);
 void thread_exit(void);
 void thread_stopall(bool force);
 
-bool thread_add(const char *description, void *(*start_routine)(void *),
+CHKRESULT bool
+thread_add(	const char *description,
+		void *(*start_routine)(void *),
 		void *arg);
+
 bool thread_setstate(thread_status_t state);
 bool thread_setmessage(const char* fmt, ...) ATTR_FORMAT(printf, 1, 2);
-bool thread_sleep(unsigned int msec);
-mythread_t *thread_getthis(void);
+
+CHKRESULT bool thread_sleep(unsigned int msec);
+
+CHKRESULT mythread_t *thread_getthis(void);
 
 void thread_serve(void);
 
@@ -66,9 +71,9 @@ typedef void (*thread_list_f)(void		*cbdata,
 			      const char	*message,
 			      uint64_t		served);
 
-unsigned int thread_list(thread_list_f cb, void *cbdata);
+CHKRESULT unsigned int thread_list(thread_list_f cb, void *cbdata);
 
-int thread_daemonize(const char *pidfile, const char *username);
+CHKRESULT int thread_daemonize(const char *pidfile, const char *username);
 
 void thread_stop_running(void);
 bool thread_keep_running(void);
@@ -86,7 +91,9 @@ typedef struct {
 
 void process_terminate(myprocess_num_t process_num, bool force);
 void process_cmdline(char * const argv[], char *cmdline, unsigned int len);
-myprocess_num_t process_spawn(char * const argv[], const char *logfile);
+
+CHKRESULT myprocess_num_t
+process_spawn(char * const argv[], const char *logfile);
 
 typedef void (*process_list_f)(void		*cbdata,
 			      uint64_t		num,
@@ -97,6 +104,6 @@ typedef void (*process_list_f)(void		*cbdata,
 			      const char	*state,
 			      const char	*logfile);
 
-unsigned int process_list(process_list_f cb, void *cbdata);
+CHKRESULT unsigned int process_list(process_list_f cb, void *cbdata);
 
 #endif /* THREAD_H */

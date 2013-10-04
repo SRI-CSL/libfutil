@@ -12,7 +12,7 @@ struct buf {
 
 typedef struct buf buf_t;
 
-bool buf_init(buf_t *buf);
+CHKRESULT bool buf_init(buf_t *buf);
 void buf_destroy(buf_t *buf);
 
 void buf_empty(buf_t *buf);
@@ -32,7 +32,7 @@ bool buf_printf(buf_t *buf, const char *fmt, ...)
 bool buf_printfL(buf_t *buf, const char *fmt, ...)
 	ATTR_FORMAT(printf, 2, 3);
 
-bool buf_minsize(buf_t *buf, unsigned int len);
+CHKRESULT bool buf_minsize(buf_t *buf, unsigned int len);
 
 void buf_lock(buf_t *buf);
 void buf_unlock(buf_t *buf);
@@ -43,6 +43,6 @@ void buf_unlock(buf_t *buf);
 #define buf_cur(buff) ((buff)->offset)
 #define buf_left(buff) (buf_max(buff) - buf_cur(buff) - 1)
 
-char *buf_find(buf_t *buf, uint64_t offset, char chr, bool findnul);
+CHKRESULT char *buf_find(buf_t *buf, uint64_t offset, char chr, bool findnul);
 
 #endif /* BUF_H */

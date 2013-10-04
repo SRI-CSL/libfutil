@@ -98,34 +98,35 @@ struct conn {
 
 /* Always defined (CONN_SSL) */
 #ifdef CONN_SSL
-SSL_CTX *conn_ssl_init(bool serverside);
+CHKRESULT SSL_CTX *conn_ssl_init(bool serverside);
 void conn_ssl_cleanup(SSL_CTX *ssl_ctx);
-bool conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
+CHKRESULT bool conn_ssl_start(conn_t *conn, SSL_CTX *ssl_ctx, const char *ssl_psk_key,
 		    const char *ssl_psk_id, bool serverside);
 #endif
 
-bool conn_init(conn_t *conn, void *clientdata);
+CHKRESULT bool conn_init(conn_t *conn, void *clientdata);
 
 void conn_destroy(conn_t *conn);
 void conn_close(conn_t *conn);
 
-bool conn_create_listen(connset_t *connset, const char *hostname,
-			uint32_t protocol, uint32_t port);
+CHKRESULT bool conn_create_listen(connset_t *connset, const char *hostname,
+				  uint32_t protocol, uint32_t port);
 
-bool conn_accept(conn_t *conn, conn_t *lconn, void *clientdata);
+CHKRESULT bool conn_accept(conn_t *conn, conn_t *lconn, void *clientdata);
 
 bool conn_getinfo(conn_t *conn, bool local, char *hostname, unsigned int hlen,
 		  uint32_t *protocol, uint32_t *port);
 
-bool conn_create_connection(conn_t *conn, const char *host, uint32_t protocol,
-			    uint32_t port, connset_t *connset);
+CHKRESULT bool conn_create_connection(conn_t *conn, const char *host,
+				      uint32_t protocol, uint32_t port,
+				      connset_t *connset);
 
-bool conn_connect(conn_t *conn, const char *host, uint32_t protocol,
-		  uint32_t port);
+CHKRESULT bool conn_connect(conn_t *conn, const char *host, uint32_t protocol,
+			    uint32_t port);
 
 void conn_events(conn_t *conn, uint16_t events);
 
-bool conn_is_eof(conn_t *conn);
+CHKRESULT bool conn_is_eof(conn_t *conn);
 
 int conn_recv(conn_t *conn);
 int conn_recvline(conn_t *conn, char *buf, unsigned int buflen);
@@ -152,7 +153,7 @@ bool conn_vprintf(conn_t *conn, const char *fmt, va_list ap)
 bool conn_printf(conn_t *conn, const char *fmt, ...)
 	ATTR_FORMAT(printf, 2, 3);
 
-bool conn_sendfile(conn_t *conn, const char *file);
+CHKRESULT bool conn_sendfile(conn_t *conn, const char *file);
 
 #define CONN_IDn "c%" PRIu64 ""
 #define CONN_ID "[" CONN_IDn "]"
@@ -203,17 +204,17 @@ typedef enum {
 	CONN_POLLOUT	= 2
 } connpoll_t;
 
-bool conn_wnt_in(conn_t *conn);
-bool conn_wnt_out(conn_t *conn);
-bool conn_poll_in(conn_t *conn);
-bool conn_poll_out(conn_t *conn);
+CHKRESULT bool conn_wnt_in(conn_t *conn);
+CHKRESULT bool conn_wnt_out(conn_t *conn);
+CHKRESULT bool conn_poll_in(conn_t *conn);
+CHKRESULT bool conn_poll_out(conn_t *conn);
 
-bool connset_init(connset_t *cs);
+CHKRESULT bool connset_init(connset_t *cs);
 void connset_destroy(connset_t *cs);
-int connset_poll(connset_t *cs);
+CHKRESULT int connset_poll(connset_t *cs);
 
-conn_t *connset_get_one_ready(connset_t *cs);
-conn_t *connset_get_ready(connset_t *cs);
+CHKRESULT conn_t *connset_get_one_ready(connset_t *cs);
+CHKRESULT conn_t *connset_get_ready(connset_t *cs);
 void connset_handling_setup(conn_t *conn);
 void connset_handling_done(conn_t *conn, bool keephandling);
 void conn_set_posthandle(conn_t *conn, conn_posthandle_f f, void *user);

@@ -129,23 +129,31 @@ struct httpsrv_client {
 #define HCL_IDn "%" PRIu64
 #define HCL_ID "[hcl" HCL_IDn "]"
 
-bool httpsrv_init(httpsrv_t *hs, void *user,
-			httpsrv_f top,
-			httpsrv_f tail,
-			httpsrv_f accept,
-			httpsrv_line_f header,
-			httpsrv_done_f handle,
-			httpsrv_bfwd_f bodyfwd_done,
-			httpsrv_f done,
-			httpsrv_f close);
-bool httpsrv_start(httpsrv_t *hs, const char *hostname, unsigned int port, unsigned int numworkers);
+CHKRESULT bool
+httpsrv_init(	httpsrv_t *hs, void *user,
+		httpsrv_f top,
+		httpsrv_f tail,
+		httpsrv_f accept,
+		httpsrv_line_f header,
+		httpsrv_done_f handle,
+		httpsrv_bfwd_f bodyfwd_done,
+		httpsrv_f done,
+		httpsrv_f close);
+CHKRESULT bool
+httpsrv_start(
+		httpsrv_t *hs,
+		const char *hostname,
+		unsigned int port,
+		unsigned int numworkers);
 void httpsrv_exit(httpsrv_t *hs);
 
-httpsrv_client_t *httpsrv_newcl(httpsrv_t *hs);
+CHKRESULT httpsrv_client_t *httpsrv_newcl(httpsrv_t *hs);
 void httpsrv_client_destroy(httpsrv_client_t *hcl);
 
 void httpsrv_done(httpsrv_client_t *hcl);
-unsigned int httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args);
+
+CHKRESULT unsigned int
+httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args);
 
 const char *httpsrv_methodname(unsigned int method);
 void httpsrv_close(httpsrv_client_t *hcl);
@@ -158,7 +166,7 @@ void httpsrv_forward(httpsrv_client_t *hin, httpsrv_client_t *hout);
 
 void httpsrv_sendfile(httpsrv_client_t *hin, const char *file);
 
-int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
+CHKRESULT int httpsrv_readbody_alloc(httpsrv_client_t *hcl, uint64_t min, uint64_t max);
 void httpsrv_readbody_free(httpsrv_client_t *hcl);
 
 void httpsrv_sessions(httpsrv_client_t *hcl);

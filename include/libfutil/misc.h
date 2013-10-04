@@ -133,8 +133,6 @@ typedef HANDLE			cond_t;
 
 #endif /* _WIN32 */
 
-bool cond_wait_(cond_t *c, mutex_t *m, unsigned int msec);
-
 #ifdef __MACH__
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -191,7 +189,6 @@ do {						\
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
-#ifndef ATTR_FORMAT
 #if defined(__GNUC__)
 #define ATTR_RESTRICT __restrict
 #define ATTR_FORMAT(type, x, y) __attribute__ ((format(type, x, y)))
@@ -199,7 +196,8 @@ do {						\
 #define ATTR_FORMAT(type, x, y)	/* nothing */
 #define ATTR_RESTRICT		/* nothing */
 #endif
-#endif
+
+#define CHKRESULT __attribute__((__warn_unused_result__))
 
 #ifndef ntohll
 #define ntohll(x) htonll(x)
@@ -258,11 +256,13 @@ typedef void (*logfunc_f)(unsigned int level, const char *caller,
 			  const char *format, va_list ap)
 			  ATTR_FORMAT(printf, 3, 0);
 
-bool log_set(const char *filename);
+CHKRESULT bool log_set(const char *filename);
 void log_chown(uid_t uid, gid_t gid);
 void log_setup(const char *name, FILE *f);
 void log_setlevel(unsigned int level);
 void log_setfunc(logfunc_f func);
+
+bool cond_wait_(cond_t *c, mutex_t *m, unsigned int msec);
 
 /**
  ** inet infrastructure
@@ -270,9 +270,10 @@ void log_setfunc(logfunc_f func);
 #define inet_bits(ip) ((ip)->a8[17])
 #define inet_clearbits(ip) ((ip)->a8[17]) = 128
 
-bool isipv4(const ipaddress_t *a);
-int inet_ptonA(const char *src, ipaddress_t *dst);
-const char *inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt);
+CHKRESULT bool isipv4(const ipaddress_t *a);
+CHKRESULT int inet_ptonA(const char *src, ipaddress_t *dst);
+CHKRESULT const char *
+inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt);
 
 #ifndef SO_REUSEPORT
 #define SO_REUSEPORT 15
@@ -312,7 +313,7 @@ const char *inet_ntopA(const ipaddress_t *addr, char *dst, socklen_t cnt);
 #include "stack.h"
 
 #define gettime() gettimes(NULL)
-uint64_t gettimes(uint64_t *msec);
+CHKRESULT uint64_t gettimes(uint64_t *msec);
 
 #ifndef _WIN32
 void set_timeout(struct timespec *timeout, unsigned int nsec);
@@ -326,15 +327,15 @@ typedef struct {
 	uint16_t	len;
 } misc_map_t;
 
-int misc_map(const char *str, const misc_map_t *map, char *data);
+CHKRESULT int misc_map(const char *str, const misc_map_t *map, char *data);
 #define MAPLABEL(x)	x, sizeof(x)-1
 #define MAPEND		NULL,0,0,0
 
-const char *getprioname(unsigned int level);
-unsigned int getpriolevel(const char *name);
+CHKRESULT const char *getprioname(unsigned int level);
+CHKRESULT unsigned int getpriolevel(const char *name);
 
 void generate_random_bytes(uint8_t *rnd, uint64_t size);
-uint64_t generate_random_number(void);
+CHKRESULT uint64_t generate_random_number(void);
 
 
 /* Base64 Standard */
@@ -357,9 +358,9 @@ unsigned int base64url_decode(char *bufplain, const char *bufcoded);
 void inet_rtop(struct addrinfo *res, char *buf, unsigned int buflen);
 
 #ifdef _WIN32
-const char *inet_ntop(int af, const void *src, char *dst, socklen_t cnt);
-int inet_pton(int af, const char *src, void *dst);
-struct tm *localtime_r(const time_t *timep, struct tm *result);
+CHKRESULT const char *inet_ntop(int af, const void *src, char *dst, socklen_t cnt);
+CHKRESULT int inet_pton(int af, const char *src, void *dst);
+CHKRESULT struct tm *localtime_r(const time_t *timep, struct tm *result);
 int strerror_r(int errnum, char *strerrbuf, size_t buflen);
 #endif
 
@@ -369,32 +370,34 @@ int strerror_r(int errnum, char *strerrbuf, size_t buflen);
 			_XOPEN_SOURCE < 700 &&		\
 			_POSIX_C_SOURCE < 200809L)) &&	\
 	!defined(__USE_XOPEN2K8))
-char *stpncpy(char *, const char *, size_t);
+CHKRESULT char *stpncpy(char *, const char *, size_t);
 #endif
 
-const char *aprintf(const char *format, ...) ATTR_FORMAT(printf, 1, 2);
+CHKRESULT const char *aprintf(const char *format, ...) ATTR_FORMAT(printf, 1, 2);
 void aprintf_free(const char *buf);
 
 void dumppacket(int level, const uint8_t *packet, uint64_t len);
 
-int parse_iso8601_time(const char *t, uint64_t *when);
+CHKRESULT int parse_iso8601_time(const char *t, uint64_t *when);
 
-int parse_iso8601_interval(const char *interval,
-			   uint64_t *start, uint64_t *end);
+CHKRESULT int parse_iso8601_interval(const char *interval,
+			   	     uint64_t *start, uint64_t *end);
 
-bool steg_encode(const char *src, unsigned int srclen,
+CHKRESULT bool
+steg_encode(const char *src, unsigned int srclen,
 		 char **dst, unsigned int *dstlen,
 		 char **mime, unsigned int *mimelen);
 
 void steg_free(const char *steg, unsigned int steg_len,
 	       const char *mime, unsigned int mime_len);
 
-bool steg_decode(const char *src, unsigned int srclen,
+CHKRESULT bool
+steg_decode(const char *src, unsigned int srclen,
 		 const char *mime,
 		 char **dst, unsigned int *dstlen);
 
 #define yesno(q) (q ? "yes" : "no")
 
-bool human_size(uint64_t n, char *buf, unsigned int buflen);
+CHKRESULT bool human_size(uint64_t n, char *buf, unsigned int buflen);
 
 #endif /* MISC_H */

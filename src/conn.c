@@ -1171,16 +1171,6 @@ conn_init(conn_t *conn, void *clientdata)
 	node_init(&conn->node);
 	mutex_init(conn->mutex);
 
-	/* Init the buffers */
-	if (	!buf_init(&conn->recv) ||
-		!buf_init(&conn->send) ||
-		!buf_init(&conn->send_headers)) {
-		return (false);
-	}
-
-	/* 2 MiB incoming */
-	buf_minsize(&conn->recv, 2 * 1024 * 1024);
-
 	/* Initial assignment */
 	conn->sock = INVALID_SOCKET;
 	conn->connset = NULL;
@@ -1190,6 +1180,18 @@ conn_init(conn_t *conn, void *clientdata)
 	conn->sendfile_fd = -1;
 	conn->sendfile_off = 0;
 	conn->sendfile_len = 0;
+
+	/* Init the buffers */
+	if (	!buf_init(&conn->recv) ||
+		!buf_init(&conn->send) ||
+		!buf_init(&conn->send_headers)) {
+		return (false);
+	}
+
+	/* 2 MiB incoming */
+	if (!buf_minsize(&conn->recv, 2 * 1024 * 1024)) {
+		return (false);
+	}
 
 	return (true);
 }

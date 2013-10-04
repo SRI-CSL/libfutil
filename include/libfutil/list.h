@@ -27,7 +27,7 @@ struct hlist_t
 #endif
 };
 
-bool list_isempty(hlist_t *l);
+CHKRESULT bool list_isempty(hlist_t *l);
 
 void list_init(hlist_t *l);
 

@@ -593,6 +593,7 @@ thread_serve(void) {
 }
 
 /* Let the thread sleep for X msecs, but allow it to be interrupted for exit */
+/* Returns true when fully slept out, false when it was interrupted */
 bool
 thread_sleep(unsigned int msec) {
 	mythread_t	*t;
