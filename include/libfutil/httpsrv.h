@@ -152,7 +152,7 @@ void httpsrv_client_destroy(httpsrv_client_t *hcl);
 
 void httpsrv_done(httpsrv_client_t *hcl);
 
-CHKRESULT unsigned int
+CHKRESULT int
 httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args);
 
 const char *httpsrv_methodname(unsigned int method);

@@ -840,7 +840,7 @@ httpsrv_parse_requestA(	httpsrv_client_t *hcl, unsigned int *ao_,
 	*argc_mine_ = argc_mine;
 }
 
-unsigned int
+int
 httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 	unsigned int	j, ro = 0, ao = 0, uo = 0, argc = 0, argc_mine = 0;
 	char		c, *s, *h;
@@ -1025,7 +1025,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 					hcl->id, conn_id(&hcl->conn),
 					hcl->headers.uri);
 				httpsrv_error(hcl, 400, "Broken Proxy URL");
-				return (false);
+				return (-1);
 			}
 
 			/*
@@ -1046,7 +1046,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 				hcl->id, conn_id(&hcl->conn),
 				hcl->headers.uri);
 			httpsrv_error(hcl, 400, "URL without root");
-			return (false);
+			return (-1);
 		}
 	}
 
@@ -1072,7 +1072,7 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 
 	if (strlen(hcl->headers.hostname) == 0) {
 		httpsrv_error(hcl, 400, "Bad Request - missing or empty Host header");
-		return (false);
+		return (-1);
 	}
 
 	/* Note that '0' is good if no arguments where wanted */
