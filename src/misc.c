@@ -619,7 +619,8 @@ misc_map(const char *str, const misc_map_t *map, char *data) {
 		return (i);
 	}
 
-	return (-1);
+	/* -2 indicates not found / not mapped */
+	return (-2);
 }
 
 static const struct {
