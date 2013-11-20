@@ -274,10 +274,12 @@ test_human_size(void) {
 				(1024L*1024),
 				(1024L*1024*10),
 				(1024L*1024*1024),
+#ifdef _64BIT
 				(1024L*1024*1024*10) + 123,
 				(1024L*1024*1024*100),
 				(1024L*1024*1024*1024*1024),
 				(1234567890123456789L),
+#endif
 			};
 	const char	*exps[] = {
 				"1 B",
@@ -288,10 +290,12 @@ test_human_size(void) {
 				"1024 KiB",
 				"10240 KiB",
 				"1024 MiB",
+#ifdef _64BIT
 				"10240 MiB",
 				"100 GiB",
 				"1024 TiB",
 				"1096 PiB",
+#endif
 			};
 
 	assert(lengthof(parms) == lengthof(exps));
