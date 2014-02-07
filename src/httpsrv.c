@@ -515,9 +515,8 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 			/* Dump what we got */
 			len = conn_buffer_cur(&hcl->conn);
 			if (len > 0) {
-				dumppacket(LOG_DEBUG,
-					 (uint8_t *)conn_buffer(&hcl->conn),
-					 len);
+				debugpacket((uint8_t *)conn_buffer(&hcl->conn),
+					    len);
 			}
 
 			/* Nothing left */

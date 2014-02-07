@@ -377,6 +377,11 @@ CHKRESULT const char *aprintf(const char *format, ...) ATTR_FORMAT(printf, 1, 2)
 void aprintf_free(const char *buf);
 
 void dumppacket(int level, const uint8_t *packet, uint64_t len);
+#ifdef DEBUG
+#define debugpacket(packet,len) dumppacket(LOG_DEBUG, packet, len)
+#else
+#define debugpacket(packet,len) {}
+#endif
 
 CHKRESULT int parse_iso8601_time(const char *t, uint64_t *when);
 

@@ -2042,8 +2042,7 @@ conn_recvA(conn_t *conn) {
 			"total = %" PRIu64,
 			conn_id(conn), r, buf_cur(&conn->recv));
 
-		dumppacket(	LOG_DEBUG,
-				(uint8_t *)&buf_buffer(&conn->recv)[cur], r);
+		debugpacket((uint8_t *)&buf_buffer(&conn->recv)[cur], r);
 #ifdef CONN_SSL
 	}
 #endif
@@ -2798,8 +2797,7 @@ conn_putl(conn_t *conn, const char *txt, unsigned int len) {
 	if (ret) {
 		log_dbg(CONN_ID ": %u", conn_id(conn), len);
 
-		dumppacket(	LOG_DEBUG,
-				(uint8_t *)&buf_buffer(&conn->send)[cur],
+		debugpacket(	(uint8_t *)&buf_buffer(&conn->send)[cur],
 				buf_cur(&conn->send) - cur);
 	}
 
@@ -2877,8 +2875,7 @@ conn_vprintf(conn_t *conn, const char *fmt, va_list ap) {
 	if (ret) {
 		log_dbg(CONN_ID "", conn_id(conn));
 
-		dumppacket(	LOG_DEBUG,
-				(uint8_t *)&buf_buffer(&conn->send)[cur],
+		debugpacket(	(uint8_t *)&buf_buffer(&conn->send)[cur],
 				buf_cur(&conn->send) - cur);
 	}
 
