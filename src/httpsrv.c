@@ -247,6 +247,7 @@ httpsrv_handle_http_skipbody(httpsrv_client_t *hcl) {
 		i = conn_recv(&hcl->conn);
 		if (i == 0) {
 			/* Try at another time */
+			connset_handling_done(&hcl->conn, false);
 			return (true);
 		}
 
@@ -281,11 +282,12 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 
 	log_dbg(
 		HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
-		" BodyFwd",
+		" BodyFwd needed = %" PRIu64,
 		hcl->id,
 		conn_id(&hcl->conn),
 		hcl->bodyfwd->id,
-		conn_id(&hcl->bodyfwd->conn));
+		conn_id(&hcl->bodyfwd->conn),
+		hcl->bodyfwd_len);
 
 	/* Copy some more */
 	len = conn_copym(&hcl->conn,
@@ -294,7 +296,7 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 
 	log_dbg(
 		HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
-		" BodyFwd %" PRIu64,
+		" BodyFwd copied = %" PRIu64,
 		hcl->id,
 		conn_id(&hcl->conn),
 		hcl->bodyfwd->id,
@@ -304,13 +306,28 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 	if (len == 0) {
 		/* Try to get more */
 		i = conn_recv(&hcl->conn);
-		if (i == 0) {
-			/* Try at another time */
-			return (true);
+
+		log_dbg(
+			HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
+			" BodyFwd received = %d",
+			hcl->id,
+			conn_id(&hcl->conn),
+			hcl->bodyfwd->id,
+			conn_id(&hcl->bodyfwd->conn),
+			i);
+
+		if (i < 0) {
+			return (-1);
 		}
 
-		/* We got some more */
-		return (false);
+		if (i == 0) {
+			/* Try at another time */
+
+			/* Get more details */
+			connset_handling_done(&hcl->conn, false);
+
+			return (0);
+		}
 	}
 
 	/* Some bits less */
@@ -324,42 +341,52 @@ httpsrv_handle_http_bodyfwd(httpsrv_client_t *hcl) {
 	fassert(len <= hcl->headers.content_length);
 	hcl->headers.content_length -= len;
 
-	/* Done or something went wrong? */
-	if (hcl->bodyfwd_len == 0 || len == 0) {
+	/* Note done yet? */
+	if (hcl->bodyfwd_len != 0) {
 
 		log_dbg(
 			HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
-			" BodyFwd Done",
+			" BodyFwd Left = %" PRIu64,
 			hcl->id,
 			conn_id(&hcl->conn),
 			hcl->bodyfwd->id,
-			conn_id(&hcl->bodyfwd->conn));
-
-		/* Inform the caller */
-		fassert(hcl->hs->bodyfwd_done != NULL);
-		hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
-
-		fassert(hcl->bodyfwd != NULL);
-
-		log_dbg(
-			HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Flush",
-			hcl->id,
-			conn_id(&hcl->conn),
-			conn_id(&hcl->bodyfwd->conn));
-
-		httpsrv_done(hcl->bodyfwd);
-		connset_handling_done(&hcl->bodyfwd->conn, false);
-
-		/* Handled it */
-		hcl->bodyfwd = NULL;
-		hcl->bodyfwd_len = 0;
-
-		/* Done with this for now */
-		httpsrv_done(hcl);
-		return (true);
+			conn_id(&hcl->bodyfwd->conn),
+			hcl->bodyfwd_len);
+		return (1);
 	}
 
-	return (false);
+	/* Done */
+	log_dbg(
+		HCL_ID " " CONN_ID " -> " HCL_ID " " CONN_ID
+		" BodyFwd Done",
+		hcl->id,
+		conn_id(&hcl->conn),
+		hcl->bodyfwd->id,
+		conn_id(&hcl->bodyfwd->conn));
+
+	/* Inform the caller */
+	fassert(hcl->hs->bodyfwd_done != NULL);
+	hcl->hs->bodyfwd_done(hcl, hcl->bodyfwd, hcl->user);
+
+	fassert(hcl->bodyfwd != NULL);
+
+	log_dbg(
+		HCL_ID " " CONN_ID "->" CONN_ID " BodyFwd Flush",
+		hcl->id,
+		conn_id(&hcl->conn),
+		conn_id(&hcl->bodyfwd->conn));
+
+	connset_handling_done(&hcl->bodyfwd->conn, hcl->bodyfwd->keephandling);
+	hcl->bodyfwd->keephandling = false;
+	httpsrv_done(hcl->bodyfwd);
+
+	/* Handled it */
+	hcl->bodyfwd = NULL;
+	hcl->bodyfwd_len = 0;
+
+	/* Done with this for now */
+	httpsrv_done(hcl);
+	return (1);
 }
 
 static bool
@@ -462,42 +489,33 @@ httpsrv_handle_http(httpsrv_client_t *hcl) {
 
 	/* As long as we got lines parse them */
 	while (true) {
-		/* Skip over the body? */
 		if (hcl->skipbody_len) {
-			if (httpsrv_handle_http_skipbody(hcl))
+			/* Skip over the body? */
+			i = httpsrv_handle_http_skipbody(hcl);
+		} else if (hcl->bodyfwd) {
+			/* Forwarding the body? */
+			i = httpsrv_handle_http_bodyfwd(hcl);
+		} else if (hcl->readbody) {
+			/* Read in the buffer? */
+			i = httpsrv_handle_http_readbody(hcl);
+		} else {
+			/* There should be something in this buffer */
+			i = conn_recvline(&hcl->conn, hcl->line, sizeof hcl->line);
+			if (i == -EINVAL) {
+				httpsrv_error(hcl, 400,
+					      "ASCII NUL character found in stream");
+
+				log_err(
+					HCL_ID " ASCII NULL found, closing",
+					hcl->id);
+
+				/* Close it up */
+				httpsrv_close(hcl);
 				return;
-			continue;
+			}
 		}
 
-		/* Forwarding the body? */
-		if (hcl->bodyfwd) {
-			if (httpsrv_handle_http_bodyfwd(hcl))
-				return;
-			continue;
-		}
-
-		/* Read in the buffer? */
-		if (hcl->readbody) {
-			if (httpsrv_handle_http_readbody(hcl))
-				return;
-			continue;
-		}
-
-		/* There should be something in this buffer */
-		i = conn_recvline(&hcl->conn, hcl->line, sizeof hcl->line);
-		if (i == -EINVAL) {
-			httpsrv_error(hcl, 400,
-				      "ASCII NUL character found in stream");
-
-			log_err(
-				HCL_ID " ASCII NULL found, closing",
-				hcl->id);
-
-			/* Close it up */
-			httpsrv_close(hcl);
-			return;
-
-		} else if (i < 0) {
+		if (i < 0) {
 			log_err(
 				HCL_ID " Receive line problem (%d), closing",
 				hcl->id, i);
@@ -842,7 +860,7 @@ httpsrv_parse_requestA(	httpsrv_client_t *hcl, unsigned int *ao_,
 int
 httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 	unsigned int	j, ro = 0, ao = 0, uo = 0, argc = 0, argc_mine = 0;
-	char		c, *s, *h;
+	char		c, *h, *s;
 	const char	*line, *var = NULL, *val = NULL;
 	uint32_t	proto;
 	httpsrv_argl_t	*arg = NULL;
@@ -1013,11 +1031,32 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 				hcl->headers.uri);
 
 			/* Find the end of the hostname */
-			h = hcl->headers.uri;
-			h = strchr(h, '/');
-			h = strchr(h+1, '/');
-			s = strchr(h+1, ' ');
-			if (s == NULL) {
+			h = NULL;
+			s = hcl->headers.uri;
+			/* Find first / */
+			s = strchr(s, '/');
+			if (s != NULL) {
+				/* Find second '/' */
+				s = strchr(s+1, '/');
+				if (s != NULL) {
+					h = s+1;
+					/* Find third '/' (end of hostname) */
+					s = strchr(s+1, '/');
+				} else {
+					log_dbg(
+						HCL_ID " " CONN_ID " Proxied Request: %s (second not found)",
+						hcl->id, conn_id(&hcl->conn),
+						hcl->headers.uri);
+				}
+			} else {
+				log_dbg(
+					HCL_ID " " CONN_ID " Proxied Request: %s (first not found)",
+					hcl->id, conn_id(&hcl->conn),
+					hcl->headers.uri);
+			}
+
+			/* Hostname not found? */
+			if (h == NULL || s == NULL) {
 				log_ntc(
 					HCL_ID " " CONN_ID
 					" Broken Proxy URL: %s",
@@ -1031,13 +1070,14 @@ httpsrv_parse_request(httpsrv_client_t *hcl, httpsrv_argl_t *args) {
 			 * Replace the Host: header as
 			 * they really wanted this site
 			 */
-			strncpy(hcl->headers.hostname,
-				h+1, (s - h) - 1);
+			strncpy(hcl->headers.hostname, h, (s - h) - 1);
 
 			/* Move the real URI to the start */
 			memmove(hcl->headers.uri, s,
 				sizeof(hcl->headers.uri) -
 					(s - hcl->headers.uri));
+			memcpy(hcl->headers.rawuri, hcl->headers.uri,
+				sizeof(hcl->headers.rawuri));
 		} else {
 			log_ntc(
 				HCL_ID " " CONN_ID
