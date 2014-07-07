@@ -1500,6 +1500,11 @@ connset_handling_setup(conn_t *conn) {
 	conn_lock(conn);
 	connset_lock(conn->connset);
 
+	log_dbg(
+		CONN_ID " list: %s",
+		conn_id(conn),
+		connset_list(conn->connset, conn->connset_l));
+
 	/* Should not be on ready or handling lists */
 	fassert(conn->connset_l != &conn->connset->ready);
 	fassert(conn->connset_l != &conn->connset->handling);
@@ -2683,8 +2688,8 @@ conn_flush(conn_t *conn) {
 		}
 	} else {
 		log_dbg(
-			CONN_ID " Written %" PRIu64 " of %" PRIu64,
-			conn_id(conn), wlen, len);
+			CONN_ID " Written %" PRIu64 " of %" PRIu64 ", left: %" PRIu64,
+			conn_id(conn), wlen, len, len - wlen);
 
 		/* Headers will go first */
 		if (len_h > 0) {
@@ -2695,6 +2700,7 @@ conn_flush(conn_t *conn) {
 			} else {
 				/* Move rest to the front of the buffer */
 				buf_shift(&conn->send_headers, wlen);
+				len_h -= wlen;
 				wlen = 0;
 			}
 		}
@@ -2704,6 +2710,8 @@ conn_flush(conn_t *conn) {
 			fassert(wlen < len_b);
 			/* Move the rest to the front of the buffer */
 			buf_shift(&conn->send, wlen);
+			len_b -= wlen;
+			wlen = 0;
 		}
 
 		/* Try to get it out there */
@@ -2711,9 +2719,9 @@ conn_flush(conn_t *conn) {
 	}
 
 	log_dbg(
-		CONN_ID " left %" PRIu64 " sf: %" PRIu64,
+		CONN_ID " left: h: %" PRIu64 ", b: %"  PRIu64 ", sf: %" PRIu64,
 		conn_id(conn),
-		buf_cur(&conn->send),
+		len_h, len_b,	
 		conn->sendfile_len);
 
 	buf_unlock(&conn->send_headers);
